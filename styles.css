@@ -10,3 +10,17 @@
 @media(max-width:1050px){.dashboard{grid-template-columns:210px minmax(0,1fr)}.social-panel{grid-column:1/-1;display:grid;grid-template-columns:1.2fr 1fr 1fr;align-items:start;border-left:0;border-top:1px solid var(--line)}.footer-note{display:none}.page-title-row h1{font-size:28px}.city-background{padding:25px}.tile .tile-art{font-size:clamp(18px,3.2vw,29px)}}
 @media(max-width:680px){.topbar{height:73px;padding:0 16px}.top-share{display:none}.dashboard{display:flex;flex-direction:column}.main-panel{order:1;padding:20px 13px}.tools-panel{order:2;border-right:0;border-top:1px solid var(--line);padding:22px 15px}.social-panel{order:3;display:flex;padding:20px 15px}.panel-header{padding-bottom:6px}.tool-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.tool-copy small,.tool-key{display:none}.tool-art{flex-basis:37px}.tool{border-color:#ecf1e9}.tool-section{margin:17px 0}.page-title-row{margin-bottom:16px}.page-title-row h1{font-size:27px}.stats-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:13px}.stat-card{padding:10px}.city-background{padding:13px}.city-grid{border-width:4px}.tile .tile-art{font-size:clamp(17px,5vw,27px)}.map-heading{padding:13px 12px}.map-footer{padding:11px;flex-direction:column;gap:5px}.map-footer span:last-child{text-align:left}.map-size{font-size:10px}.topbar-right{gap:6px}.connection-badge{font-size:10px;padding:8px}.sidebar .side-card{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* Inicio de sesión de los jugadores */
+[hidden]{display:none!important}
+.auth-card{background:linear-gradient(160deg,#ffffff,#f8fbf5)}
+.auth-description{font-size:11px;line-height:1.55;color:#788b7d;margin:0 0 13px}
+.auth-description strong{display:block;color:#3e6a51;overflow-wrap:anywhere;margin-top:4px}
+.login-form{display:flex;flex-direction:column;gap:9px}
+.login-form label{margin:0}
+.login-form input{min-width:0;width:100%;padding:11px 10px;border:1px solid #dfe8dc;border-radius:9px;background:#fff;font-size:12px;color:#2f4937}
+.login-form .btn{width:100%;margin-top:6px}
+.auth-status{font-size:10px;line-height:1.5;color:#779080;margin:12px 0 0;overflow-wrap:anywhere}
+.auth-card .btn-light{width:100%}
+@media(max-width:1050px){.social-panel{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.social-panel{display:flex}}
