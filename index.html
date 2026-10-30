@@ -16,7 +16,7 @@
         <span class="brand-text"><strong>CITY<span>CHAOS</span></strong><small>BUILD & DESTROY</small></span>
       </a>
       <div class="topbar-right">
-        <div id="connectionBadge" class="connection-badge is-local" role="status" aria-live="polite"><span class="status-dot"></span><span id="connectionText">Modo local</span></div>
+        <div id="connectionBadge" class="connection-badge is-local" role="status" aria-live="polite"><span class="status-dot"></span><span id="connectionText">Sin conectar</span></div>
         <button class="btn btn-outline top-share" id="shareTopButton" type="button">↗ Compartir sala</button>
       </div>
     </header>
@@ -66,7 +66,7 @@
 
         <section class="map-card" aria-label="Mapa editable de la ciudad">
           <div class="map-heading">
-            <div class="map-title"><span class="live-spark">✳</span><div><strong>Mi pequeña ciudad</strong><small id="mapSubtitle">Elige un objeto y comienza a crear</small></div></div>
+            <div class="map-title"><span class="live-spark">✳</span><div><strong>Mi pequeña ciudad</strong><small id="mapSubtitle">Inicia sesión para construir una ciudad compartida</small></div></div>
             <div class="map-actions"><span class="map-size">12 × 12</span><button class="icon-button" id="helpButton" title="Cómo jugar" aria-label="Cómo jugar" type="button">?</button></div>
           </div>
           <div class="city-background">
@@ -77,12 +77,30 @@
               <div id="impactFx" class="impact-fx" aria-hidden="true"></div>
             </div>
           </div>
-          <div class="map-footer"><span id="currentToolLabel">🏠 Seleccionado: Casita</span><span id="saveMessage">◉ Cambios guardados en este navegador</span></div>
+          <div class="map-footer"><span id="currentToolLabel">🏠 Seleccionado: Casita</span><span id="saveMessage">○ Inicia sesión para guardar en Supabase</span></div>
         </section>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
       </main>
 
       <aside class="sidebar social-panel">
+        <section class="side-card auth-card">
+          <div class="section-line"><h3>🔐 INICIAR SESIÓN</h3><span>04</span></div>
+          <div id="authSignedOut">
+            <p class="auth-description">Entra con una de las cuentas de prueba que creaste en Supabase.</p>
+            <form id="loginForm" class="login-form">
+              <label for="emailInput">Correo electrónico</label>
+              <input id="emailInput" type="email" autocomplete="username" placeholder="ana@prueba.com" required>
+              <label for="passwordInput">Contraseña</label>
+              <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+              <button id="loginButton" class="btn btn-dark" type="submit">Entrar a la ciudad</button>
+            </form>
+          </div>
+          <div id="authSignedIn" hidden>
+            <p class="auth-description">Conectado como <strong id="userEmailLabel"></strong></p>
+            <button type="button" id="logoutButton" class="btn btn-light">Cerrar sesión</button>
+          </div>
+          <p id="authStatus" class="auth-status" role="status" aria-live="polite">Preparando conexión…</p>
+        </section>
         <section class="room-card side-card">
           <div class="section-line"><h3>🌐 SALA COMPARTIDA</h3><span>03</span></div>
           <label for="roomInput">Código de la ciudad</label>
@@ -91,7 +109,7 @@
           <div class="room-divider"></div>
           <label for="nameInput">Tu nombre en la ciudad</label>
           <div class="input-line"><input id="nameInput" maxlength="18" type="text" placeholder="Tu nombre" aria-label="Nombre del jugador"><button id="saveNameButton" class="btn btn-light" type="button">✓</button></div>
-          <p id="cloudHint" class="cloud-hint">Esta es una demo local. Para compartir en tiempo real, configura Firebase según el README.</p>
+          <p id="cloudHint" class="cloud-hint">Inicia sesión para conectar con Supabase y compartir la ciudad en tiempo real.</p>
         </section>
 
         <section class="side-card players-card">
@@ -101,7 +119,7 @@
 
         <section class="side-card history-card">
           <div class="section-line"><h3>ACTIVIDAD RECIENTE</h3><span>↺</span></div>
-          <div id="activityList" class="activity-list"><p class="empty-activity">Tus aventuras aparecerán aquí.</p></div>
+          <div id="activityList" class="activity-list"><p class="empty-activity">Las actividades de esta sesión aparecerán aquí.</p></div>
         </section>
 
         <div class="footer-note">HECHO PARA CREAR, COMPARTIR Y DESTRUIR <span>♥</span></div>
@@ -111,8 +129,8 @@
   <dialog id="helpDialog" class="help-dialog">
     <div class="dialog-heading"><h2>¡Bienvenido a City Chaos! ✨</h2><button type="button" id="closeHelpButton" class="icon-button" aria-label="Cerrar">×</button></div>
     <p>Selecciona un objeto a la izquierda y haz clic en una casilla del mapa. Puedes reemplazar objetos, crear calles y jardines o lanzar un meteorito que destruye un área de 3 × 3.</p>
-    <p><strong>Multijugador:</strong> cuando Firebase esté conectado, comparte el enlace de tu sala con alguien. Ambos verán los cambios inmediatamente y el mapa quedará guardado en línea.</p>
-    <p><strong>Sin Firebase:</strong> el juego funciona como una demo local y recuerda la ciudad únicamente en el navegador actual.</p>
+    <p><strong>Multijugador:</strong> inicia sesión con una de las cuentas de Supabase y comparte el enlace de la sala. Ambos verán los cambios inmediatamente y el mapa se guardará en la nube.</p>
+    <p><strong>Guardado:</strong> la ciudad está almacenada en Supabase. Puedes cerrar la página o recargarla y volver a entrar a la misma sala sin perder las construcciones.</p>
     <button type="button" id="gotItButton" class="btn btn-dark">¡A construir!</button>
   </dialog>
   <script type="module" src="./app.js"></script>
