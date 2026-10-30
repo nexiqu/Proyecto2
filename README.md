@@ -9,7 +9,7 @@ Videojuego web en el que **dos usuarios autenticados** construyen y destruyen un
 - Destruir con un meteorito ☄️ (zona de 3 × 3) o borrar una sola casilla.
 - Usar diferentes salas con códigos y enlaces compartibles.
 - Iniciar sesión con **correo y contraseña** de Supabase Authentication.
-- Compartir modificaciones entre navegadores con **Supabase Realtime** (Postgres Changes y Broadcast).
+- Compartir modificaciones entre navegadores con **Supabase Realtime** (Postgres Changes y Broadcast). Si falla el canal WebSocket, los cambios se siguen sincronizando automáticamente mediante lectura de Supabase cada ~0,9 segundos, sin necesidad de recargar.
 - Guardar el mapa en una tabla de Supabase y recuperarlo tras refrescar o volver a entrar a la misma sala.
 - Mostrar jugadores conectados mediante Presence y actividad de la sesión.
 
