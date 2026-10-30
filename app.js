@@ -513,12 +513,18 @@ renderActivity();
 updateUrl();
 updateAuthUI();
 if (supabase) {
-  supabase.auth.onAuthStateChange((_event,session) => {
-    // Diferir la sincronización evita reentrar en Auth desde su callback.
-    setTimeout(() => { void processSession(session).catch(err => {
-      console.error("Error al sincronizar la sesión:",err);
-      showToast("No se pudo conectar tu sesión. Recarga la página.");
-    }); },0);
+  supabase.auth.onAuthStateChange(() => {
+    // Tomar la sesión ACTUAL evita que un evento inicial antiguo (sin sesión)
+    // reemplace un inicio de sesión que acaba de completarse.
+    setTimeout(() => {
+      void supabase.auth.getSession().then(({data,error}) => {
+        if (error) throw error;
+        return processSession(data.session);
+      }).catch(err => {
+        console.error("Error al sincronizar la sesión:",err);
+        showToast("No se pudo conectar tu sesión. Recarga la página.");
+      });
+    },0);
   });
   status("connecting","Comprobando sesión…");
   // Recuperación de sesión incluso después de refrescar.
