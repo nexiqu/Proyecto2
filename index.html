@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8f2">
+  <meta name="description" content="City Chaos: construye y destruye una ciudad compartida con tus amigos.">
+  <title>City Chaos — Build & Destroy</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="City Chaos, inicio">
+        <span class="brand-mark" aria-hidden="true"><span>▦</span><span>✦</span></span>
+        <span class="brand-text"><strong>CITY<span>CHAOS</span></strong><small>BUILD & DESTROY</small></span>
+      </a>
+      <div class="topbar-right">
+        <div id="connectionBadge" class="connection-badge is-local" role="status" aria-live="polite"><span class="status-dot"></span><span id="connectionText">Modo local</span></div>
+        <button class="btn btn-outline top-share" id="shareTopButton" type="button">↗ Compartir sala</button>
+      </div>
+    </header>
+
+    <div class="dashboard">
+      <aside class="sidebar tools-panel">
+        <div class="panel-header">
+          <span class="eyebrow">TU CAJA DE HERRAMIENTAS</span>
+          <h2>¡Manos a la obra! <span>✳</span></h2>
+          <p>Elige un objeto y toca el lugar del mapa donde quieras ponerlo.</p>
+        </div>
+
+        <div class="tool-section">
+          <div class="section-line"><h3>CONSTRUIR</h3><span>01</span></div>
+          <div class="tool-list" role="group" aria-label="Herramientas de construcción">
+            <button type="button" class="tool selected" data-tool="house" aria-pressed="true"><span class="tool-art art-house">🏠</span><span class="tool-copy"><strong>Casita</strong><small>Un hogar acogedor</small></span><span class="tool-key">1</span></button>
+            <button type="button" class="tool" data-tool="building" aria-pressed="false"><span class="tool-art art-building">🏢</span><span class="tool-copy"><strong>Edificio</strong><small>La ciudad crece</small></span><span class="tool-key">2</span></button>
+            <button type="button" class="tool" data-tool="road" aria-pressed="false"><span class="tool-art art-road">🛣️</span><span class="tool-copy"><strong>Carretera</strong><small>Conecta los barrios</small></span><span class="tool-key">3</span></button>
+            <button type="button" class="tool" data-tool="tree" aria-pressed="false"><span class="tool-art art-tree">🌳</span><span class="tool-copy"><strong>Árbol</strong><small>Un poquito de verde</small></span><span class="tool-key">4</span></button>
+            <button type="button" class="tool" data-tool="park" aria-pressed="false"><span class="tool-art art-park">🌷</span><span class="tool-copy"><strong>Jardín</strong><small>Flores para todos</small></span><span class="tool-key">5</span></button>
+          </div>
+        </div>
+
+        <div class="tool-section destruction-section">
+          <div class="section-line"><h3>DESTRUIR</h3><span>02</span></div>
+          <div class="tool-list" role="group" aria-label="Herramientas de destrucción">
+            <button type="button" class="tool meteor-tool" data-tool="meteor" aria-pressed="false"><span class="tool-art art-meteor">☄️</span><span class="tool-copy"><strong>Meteorito</strong><small>Impacto de 3 × 3</small></span><span class="tool-key">6</span></button>
+            <button type="button" class="tool" data-tool="erase" aria-pressed="false"><span class="tool-art art-erase">🧹</span><span class="tool-copy"><strong>Eliminar</strong><small>Borra una casilla</small></span><span class="tool-key">7</span></button>
+          </div>
+        </div>
+
+        <div class="tip-card"><span class="tip-icon">✦</span><div><strong>¿Sabías que…?</strong><p>El meteorito destruye hasta 9 casillas a la vez. ¡Cuidado con tu ciudad!</p></div></div>
+      </aside>
+
+      <main class="main-panel">
+        <div class="page-title-row">
+          <div><span class="eyebrow">TU PEQUEÑO MUNDO COMPARTIDO</span><h1>Una ciudad. <em>Mil posibilidades.</em></h1></div>
+          <span class="world-tag">✿ MUNDO EN CONSTRUCCIÓN</span>
+        </div>
+
+        <div class="stats-row" aria-label="Estadísticas de la ciudad">
+          <div class="stat-card"><span class="stat-icon houses-stat">🏡</span><div><strong id="buildingsCount">0</strong><span>Edificios</span></div></div>
+          <div class="stat-card"><span class="stat-icon roads-stat">🛣️</span><div><strong id="roadsCount">0</strong><span>Carreteras</span></div></div>
+          <div class="stat-card"><span class="stat-icon trees-stat">🌳</span><div><strong id="natureCount">0</strong><span>Naturaleza</span></div></div>
+          <div class="stat-card"><span class="stat-icon space-stat">◫</span><div><strong id="spaceCount">0%</strong><span>Ocupación</span></div></div>
+        </div>
+
+        <section class="map-card" aria-label="Mapa editable de la ciudad">
+          <div class="map-heading">
+            <div class="map-title"><span class="live-spark">✳</span><div><strong>Mi pequeña ciudad</strong><small id="mapSubtitle">Elige un objeto y comienza a crear</small></div></div>
+            <div class="map-actions"><span class="map-size">12 × 12</span><button class="icon-button" id="helpButton" title="Cómo jugar" aria-label="Cómo jugar" type="button">?</button></div>
+          </div>
+          <div class="city-background">
+            <div class="map-scene">
+              <div class="map-decoration decor-one" aria-hidden="true">✿</div>
+              <div class="map-decoration decor-two" aria-hidden="true">✦</div>
+              <div id="cityGrid" class="city-grid" role="group" aria-label="Casillas para construir y destruir"></div>
+              <div id="impactFx" class="impact-fx" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div class="map-footer"><span id="currentToolLabel">🏠 Seleccionado: Casita</span><span id="saveMessage">◉ Cambios guardados en este navegador</span></div>
+        </section>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      </main>
+
+      <aside class="sidebar social-panel">
+        <section class="room-card side-card">
+          <div class="section-line"><h3>🌐 SALA COMPARTIDA</h3><span>03</span></div>
+          <label for="roomInput">Código de la ciudad</label>
+          <div class="input-line"><input id="roomInput" type="text" maxlength="24" autocomplete="off" spellcheck="false" aria-label="Código de sala"><button type="button" id="joinRoomButton" class="btn btn-dark">Entrar</button></div>
+          <div class="room-buttons"><button type="button" id="newRoomButton" class="quiet-button">＋ Nueva sala</button><button type="button" id="copyLinkButton" class="quiet-button">↗ Copiar enlace</button></div>
+          <div class="room-divider"></div>
+          <label for="nameInput">Tu nombre en la ciudad</label>
+          <div class="input-line"><input id="nameInput" maxlength="18" type="text" placeholder="Tu nombre" aria-label="Nombre del jugador"><button id="saveNameButton" class="btn btn-light" type="button">✓</button></div>
+          <p id="cloudHint" class="cloud-hint">Esta es una demo local. Para compartir en tiempo real, configura Firebase según el README.</p>
+        </section>
+
+        <section class="side-card players-card">
+          <div class="section-line"><h3>JUGADORES</h3><span id="playerCount">1</span></div>
+          <div id="playersList" class="players-list"><div class="player"><span class="player-avatar avatar-a">☺</span><span><strong>Tú</strong><small>Jugando en local</small></span><span class="player-status">●</span></div></div>
+        </section>
+
+        <section class="side-card history-card">
+          <div class="section-line"><h3>ACTIVIDAD RECIENTE</h3><span>↺</span></div>
+          <div id="activityList" class="activity-list"><p class="empty-activity">Tus aventuras aparecerán aquí.</p></div>
+        </section>
+
+        <div class="footer-note">HECHO PARA CREAR, COMPARTIR Y DESTRUIR <span>♥</span></div>
+      </aside>
+    </div>
+  </div>
+  <dialog id="helpDialog" class="help-dialog">
+    <div class="dialog-heading"><h2>¡Bienvenido a City Chaos! ✨</h2><button type="button" id="closeHelpButton" class="icon-button" aria-label="Cerrar">×</button></div>
+    <p>Selecciona un objeto a la izquierda y haz clic en una casilla del mapa. Puedes reemplazar objetos, crear calles y jardines o lanzar un meteorito que destruye un área de 3 × 3.</p>
+    <p><strong>Multijugador:</strong> cuando Firebase esté conectado, comparte el enlace de tu sala con alguien. Ambos verán los cambios inmediatamente y el mapa quedará guardado en línea.</p>
+    <p><strong>Sin Firebase:</strong> el juego funciona como una demo local y recuerda la ciudad únicamente en el navegador actual.</p>
+    <button type="button" id="gotItButton" class="btn btn-dark">¡A construir!</button>
+  </dialog>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
