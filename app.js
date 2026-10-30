@@ -1,12 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
-
+// City Chaos · Supabase con API HTTP nativa.
+// Evita depender de constructores del bundle de supabase-js en producción.
+const PROJECT_URL = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/+$/, "");
+const PUBLISHABLE_KEY = String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "");
+const READY = PROJECT_URL.startsWith("https://") && PUBLISHABLE_KEY.length > 12;
 const SIZE = 12;
-const URL = import.meta.env.VITE_SUPABASE_URL;
-const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const supabase = URL && KEY ? createClient(URL, KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
-}) : null;
-
+const SESSION_KEY = "citychaos_supabase_session_v3_" + PROJECT_URL;
 const TOOL_DATA = {
   house: { name: "Casita", icon: "🏠", verb: "construyó una casa" },
   building: { name: "Edificio", icon: "🏢", verb: "levantó un edificio" },
@@ -16,168 +14,234 @@ const TOOL_DATA = {
   meteor: { name: "Meteorito", icon: "☄️", verb: "lanzó un meteorito" },
   erase: { name: "Eliminar", icon: "🧹", verb: "eliminó un objeto" }
 };
-const $ = (id) => document.getElementById(id);
+const $ = id => document.getElementById(id);
+const state = {
+  room: cleanRoom(new URLSearchParams(location.search).get("sala") || "CIUDAD-01"),
+  user: null, session: null, player: "Jugador", mode: "offline", tool: "house",
+  cells: {}, activity: [], roomVersion: 0, loadVersion: 0,
+  pollTimer: null, toastTimer: null, busy: false, refreshPromise: null
+};
 const grid = $("cityGrid");
 const roomInput = $("roomInput");
 const nameInput = $("nameInput");
-const state = {
-  room: cleanRoom(new URLSearchParams(location.search).get("sala") || "CIUDAD-01"),
-  user: null, tool: "house", mode: "offline", channel: null,
-  cells: {}, activity: [], player: "Jugador",
-  roomVersion: 0, requestVersion: 0, refreshTimer: null, pollTimer: null, toastTimer: null,
-  authChangeVersion: 0
-};
 roomInput.value = state.room;
 
 function cleanRoom(value) {
-  return (String(value || "").toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 24) || "CIUDAD-01");
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 24) || "CIUDAD-01";
 }
 function cleanName(value) {
   return String(value || "").trim().replace(/[<>]/g, "").slice(0, 18) || "Jugador";
 }
 function tileKey(row, col) { return row + "-" + col; }
-function showToast(message) {
-  const toast = $("toast");
-  clearTimeout(state.toastTimer);
-  toast.textContent = message;
-  toast.classList.add("show");
-  state.toastTimer = setTimeout(() => toast.classList.remove("show"), 3100);
-}
 function status(mode, message) {
   $("connectionBadge").className = "connection-badge is-" + mode;
   $("connectionText").textContent = message;
 }
+function saveMessage(message) { $("saveMessage").textContent = message; }
 function cloudHint(message, connected = false) {
   $("cloudHint").textContent = message;
   $("cloudHint").classList.toggle("connected", connected);
 }
-function saveMessage(message) { $("saveMessage").textContent = message; }
-
+function showToast(message) {
+  const node = $("toast");
+  clearTimeout(state.toastTimer);
+  node.textContent = message;
+  node.classList.add("show");
+  state.toastTimer = setTimeout(() => node.classList.remove("show"), 3300);
+}
+function errorMessage(err) {
+  return err instanceof Error ? err.message : String(err || "Error desconocido");
+}
+function userLabel() {
+  return cleanName(state.user?.email?.split("@")[0] || "Jugador");
+}
+function readSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.access_token && parsed?.refresh_token && parsed?.user?.id ? parsed : null;
+  } catch { return null; }
+}
+function saveSession(session) {
+  state.session = session;
+  if (session) {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); }
+    catch (e) { console.warn("No fue posible almacenar la sesión:", e); }
+  } else {
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+async function http(path, { method = "GET", body, token, headers = {} } = {}) {
+  if (!READY) throw new Error("Faltan las dos variables públicas de Supabase en Vercel.");
+  const res = await fetch(PROJECT_URL + path, {
+    method, cache: "no-store",
+    headers: {
+      apikey: PUBLISHABLE_KEY,
+      ...(token ? { Authorization: "Bearer " + token } : {}),
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...headers
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {})
+  });
+  const text = await res.text();
+  let value = null;
+  if (text) {
+    try { value = JSON.parse(text); } catch { value = { message: text.slice(0, 300) }; }
+  }
+  if (!res.ok) {
+    const message = value?.msg || value?.message || value?.error_description || value?.error ||
+      "HTTP " + res.status;
+    const error = new Error(message);
+    error.status = res.status;
+    throw error;
+  }
+  return value;
+}
+async function refreshSession() {
+  if (!state.session?.refresh_token) throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+  if (!state.refreshPromise) {
+    const refreshToken = state.session.refresh_token;
+    state.refreshPromise = http("/auth/v1/token?grant_type=refresh_token", {
+      method: "POST", body: { refresh_token: refreshToken }
+    }).then(data => {
+      if (!data?.access_token || !data?.user) throw new Error("Supabase no pudo renovar la sesión.");
+      saveSession({
+        ...data,
+        expires_at: Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600)
+      });
+      state.user = data.user;
+      return state.session;
+    }).finally(() => { state.refreshPromise = null; });
+  }
+  return state.refreshPromise;
+}
+async function validToken() {
+  if (!state.session?.access_token) throw new Error("Inicia sesión para utilizar la ciudad.");
+  if (Number(state.session.expires_at || 0) * 1000 < Date.now() + 30000) {
+    await refreshSession();
+  }
+  return state.session.access_token;
+}
+async function request(path, options = {}) {
+  let token = await validToken();
+  try {
+    return await http(path, { ...options, token });
+  } catch (error) {
+    if (error.status !== 401) throw error;
+    await refreshSession();
+    token = await validToken();
+    return http(path, { ...options, token });
+  }
+}
+function updateAuthUI(message) {
+  const loggedIn = Boolean(state.user);
+  $("authSignedOut").hidden = loggedIn;
+  $("authSignedIn").hidden = !loggedIn;
+  $("userEmailLabel").textContent = state.user?.email || "";
+  $("authStatus").textContent = message || (loggedIn
+    ? "✓ Sesión activa: " + state.user.email
+    : READY ? "Usa una cuenta creada en Authentication → Users."
+      : "Faltan VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
+  $("loginButton").disabled = !READY;
+}
 function initGrid() {
-  grid.textContent = "";
   const fragment = document.createDocumentFragment();
   for (let row = 0; row < SIZE; row++) {
     for (let col = 0; col < SIZE; col++) {
-      const cell = document.createElement("button");
-      cell.type = "button";
-      cell.className = "tile";
-      cell.dataset.row = String(row);
-      cell.dataset.col = String(col);
-      cell.dataset.type = "empty";
-      cell.setAttribute("aria-label", "Fila " + (row + 1) + ", columna " + (col + 1) + ": vacía");
-      const icon = document.createElement("span");
-      icon.className = "tile-art";
-      icon.setAttribute("aria-hidden", "true");
-      cell.append(icon);
-      fragment.append(cell);
+      const tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "tile";
+      tile.dataset.row = String(row);
+      tile.dataset.col = String(col);
+      tile.dataset.type = "empty";
+      const art = document.createElement("span");
+      art.className = "tile-art";
+      art.setAttribute("aria-hidden", "true");
+      tile.append(art);
+      fragment.append(tile);
     }
   }
-  grid.append(fragment);
+  grid.replaceChildren(fragment);
 }
 function renderGrid() {
   const cells = state.cells;
   for (const tile of grid.children) {
-    const row = Number(tile.dataset.row);
-    const col = Number(tile.dataset.col);
+    const row = Number(tile.dataset.row), col = Number(tile.dataset.col);
     const type = cells[tileKey(row, col)] || "empty";
     tile.dataset.type = type;
-    tile.querySelector(".tile-art").textContent = type === "road" ? "" : (TOOL_DATA[type]?.icon || "");
-    const horizontal = cells[tileKey(row,col-1)] === "road" || cells[tileKey(row,col+1)] === "road";
+    tile.querySelector(".tile-art").textContent = type === "road" ? "" : TOOL_DATA[type]?.icon || "";
+    const horizontal = cells[tileKey(row, col-1)] === "road" || cells[tileKey(row,col+1)] === "road";
     const vertical = cells[tileKey(row-1,col)] === "road" || cells[tileKey(row+1,col)] === "road";
     tile.classList.toggle("road-horizontal", Boolean(horizontal && !vertical));
-    tile.setAttribute("aria-label", "Fila " + (row + 1) + ", columna " + (col + 1) + ": " + (TOOL_DATA[type]?.name || "vacía"));
+    tile.setAttribute("aria-label", "Fila " + (row+1) + ", columna " + (col+1) + ": " +
+      (TOOL_DATA[type]?.name || "vacía"));
   }
-  const values = Object.values(cells);
-  $("buildingsCount").textContent = values.filter(v => v === "house" || v === "building").length;
-  $("roadsCount").textContent = values.filter(v => v === "road").length;
-  $("natureCount").textContent = values.filter(v => v === "tree" || v === "park").length;
-  $("spaceCount").textContent = Math.round((values.length / (SIZE * SIZE)) * 100) + "%";
-}
-function renderActivity() {
-  const host = $("activityList");
-  host.textContent = "";
-  if (!state.activity.length) {
-    const p = document.createElement("p");
-    p.className = "empty-activity";
-    p.textContent = "Las acciones de esta sesión aparecerán aquí.";
-    host.append(p);
-    return;
-  }
-  for (const entry of state.activity.slice(0, 7)) {
-    const item = document.createElement("div");
-    item.className = "activity-item";
-    const icon = document.createElement("span");
-    icon.className = "activity-icon";
-    icon.textContent = TOOL_DATA[entry.tool]?.icon || "✳";
-    const body = document.createElement("div");
-    body.className = "activity-text";
-    const label = document.createElement("strong");
-    label.textContent = cleanName(entry.player) + " " + (TOOL_DATA[entry.tool]?.verb || "modificó la ciudad");
-    const time = document.createElement("small");
-    time.textContent = new Date(entry.time).toLocaleTimeString("es-EC",{hour:"2-digit",minute:"2-digit"});
-    body.append(label,time);
-    item.append(icon,body);
-    host.append(item);
-  }
-}
-function logAction(action) {
-  if (!action || !TOOL_DATA[action.tool]) return;
-  if (state.activity.some(a => a.id === action.id)) return;
-  state.activity.unshift(action);
-  state.activity = state.activity.slice(0, 7);
-  renderActivity();
-}
-function playerFromAccount(user) {
-  return cleanName(localStorage.getItem("citychaos_name_" + user.id) || user.email?.split("@")[0] || "Jugador");
+  const types = Object.values(cells);
+  $("buildingsCount").textContent = types.filter(x => x === "house" || x === "building").length;
+  $("roadsCount").textContent = types.filter(x => x === "road").length;
+  $("natureCount").textContent = types.filter(x => x === "tree" || x === "park").length;
+  $("spaceCount").textContent = Math.round(100 * types.length / (SIZE * SIZE)) + "%";
 }
 function renderPlayers() {
   const host = $("playersList");
-  host.textContent = "";
-  let players = [];
-  if (state.channel && state.user) {
-    try {
-      for (const presences of Object.values(state.channel.presenceState())) {
-        for (const entry of presences) players.push({
-          uid: entry.uid, name: cleanName(entry.name), self: entry.uid === state.user.id
-        });
-      }
-    } catch (error) { console.warn("No se pudo consultar Presence:", error); }
+  host.replaceChildren();
+  $("playerCount").textContent = state.user ? "1" : "0";
+  if (!state.user) return;
+  const row = document.createElement("div");
+  row.className = "player";
+  const avatar = document.createElement("span");
+  avatar.className = "player-avatar avatar-a";
+  avatar.textContent = "☺";
+  const info = document.createElement("span");
+  const name = document.createElement("strong");
+  name.textContent = state.player + " (tú)";
+  const subtitle = document.createElement("small");
+  subtitle.textContent = "Los cambios de otros jugadores aparecen en el mapa";
+  info.append(name, subtitle);
+  row.append(avatar, info);
+  host.append(row);
+}
+function renderActivity() {
+  const host = $("activityList");
+  host.replaceChildren();
+  if (!state.activity.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-activity";
+    empty.textContent = "Las acciones de esta sesión aparecerán aquí.";
+    host.append(empty);
+    return;
   }
-  if (!players.length && state.user) players = [{ uid: state.user.id, name: state.player, self: true }];
-  const dedup = new Map(players.map(p => [p.uid, p]));
-  players = [...dedup.values()];
-  $("playerCount").textContent = String(players.length);
-  for (let index = 0; index < players.length; index++) {
-    const person = players[index];
-    const node = document.createElement("div");
-    node.className = "player";
-    const avatar = document.createElement("span");
-    avatar.className = "player-avatar avatar-" + ["a","b","c"][index%3];
-    avatar.textContent = ["☺","✿","✦"][index%3];
-    const description = document.createElement("span");
-    const name = document.createElement("strong");
-    name.textContent = person.name + (person.self ? " (tú)" : "");
-    const sub = document.createElement("small");
-    sub.textContent = state.mode === "online" ? "Conectado" : "Esperando conexión";
-    description.append(name,sub);
-    const dot = document.createElement("span");
-    dot.className = "player-status";
-    dot.textContent = "●";
-    node.append(avatar,description,dot);
-    host.append(node);
+  for (const action of state.activity.slice(0,7)) {
+    const row = document.createElement("div");
+    row.className = "activity-item";
+    const symbol = document.createElement("span");
+    symbol.className = "activity-icon";
+    symbol.textContent = TOOL_DATA[action.tool]?.icon || "✳";
+    const content = document.createElement("div");
+    content.className = "activity-text";
+    const label = document.createElement("strong");
+    label.textContent = action.player + " " + TOOL_DATA[action.tool].verb;
+    const timing = document.createElement("small");
+    timing.textContent = new Date(action.time).toLocaleTimeString("es-EC", {
+      hour: "2-digit", minute: "2-digit"
+    });
+    content.append(label, timing);
+    row.append(symbol, content);
+    host.append(row);
   }
 }
 function selectTool(tool) {
   if (!TOOL_DATA[tool]) return;
   state.tool = tool;
-  document.querySelectorAll(".tool").forEach(button => {
-    const active = button.dataset.tool === tool;
-    button.classList.toggle("selected", active);
-    button.setAttribute("aria-pressed", String(active));
+  document.querySelectorAll("[data-tool]").forEach(button => {
+    const selected = button.dataset.tool === tool;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
   });
   $("currentToolLabel").textContent = TOOL_DATA[tool].icon + " Seleccionado: " + TOOL_DATA[tool].name;
-  $("mapSubtitle").textContent = tool === "meteor" ? "Toca el mapa para lanzar un meteorito" :
-    tool === "erase" ? "Toca una casilla para despejarla" : "Coloca " + TOOL_DATA[tool].name + " sobre una casilla";
+  $("mapSubtitle").textContent = tool === "meteor" ? "Lanza un meteorito en una zona de 3 × 3" :
+    tool === "erase" ? "Toca una casilla para eliminar el objeto" :
+      "Coloca " + TOOL_DATA[tool].name + " sobre una casilla";
   clearPreview();
 }
 function clearPreview() {
@@ -186,405 +250,332 @@ function clearPreview() {
 function previewImpact(row,col) {
   if (state.tool !== "meteor") return;
   for (const tile of grid.children) {
-    const distance = Math.max(Math.abs(Number(tile.dataset.row) - row), Math.abs(Number(tile.dataset.col) - col));
-    tile.classList.toggle("preview-impact", distance <= 1);
+    tile.classList.toggle("preview-impact", Math.max(
+      Math.abs(Number(tile.dataset.row) - row),
+      Math.abs(Number(tile.dataset.col) - col)
+    ) <= 1);
   }
 }
 function animateMeteor(row,col) {
   if (!Number.isInteger(row) || !Number.isInteger(col)) return;
   const targets = [];
-  for (let dr=-1;dr<=1;dr++) {
-    for (let dc=-1;dc<=1;dc++) {
-      const tile = grid.querySelector('[data-row="'+(row+dr)+'"][data-col="'+(col+dc)+'"]');
-      if (tile) {
-        tile.classList.remove("impact");
-        void tile.offsetWidth;
-        tile.classList.add("impact");
-        targets.push(tile);
-      }
+  for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+    const tile = grid.querySelector('[data-row="' + (row+dr) + '"][data-col="' + (col+dc) + '"]');
+    if (tile) {
+      tile.classList.remove("impact");
+      void tile.offsetWidth;
+      tile.classList.add("impact");
+      targets.push(tile);
     }
   }
-  const center = grid.querySelector('[data-row="'+row+'"][data-col="'+col+'"]');
+  const center = grid.querySelector('[data-row="' + row + '"][data-col="' + col + '"]');
   if (!center) return;
   const rect = grid.getBoundingClientRect();
   const centerRect = center.getBoundingClientRect();
-  const burst = document.createElement("span");
-  burst.className = "impact-burst";
-  burst.textContent = "☄️";
-  burst.style.left = (centerRect.left - rect.left + centerRect.width/2 + grid.offsetLeft) + "px";
-  burst.style.top = (centerRect.top - rect.top + centerRect.height/2 + grid.offsetTop) + "px";
-  $("impactFx").append(burst);
+  const impact = document.createElement("span");
+  impact.className = "impact-burst";
+  impact.textContent = "☄️";
+  impact.style.left = centerRect.left - rect.left + centerRect.width/2 + grid.offsetLeft + "px";
+  impact.style.top = centerRect.top - rect.top + centerRect.height/2 + grid.offsetTop + "px";
+  $("impactFx").append(impact);
   setTimeout(() => {
-    burst.remove();
+    impact.remove();
     targets.forEach(tile => tile.classList.remove("impact"));
   }, 900);
 }
 function updateUrl() {
-  const url = new URL(window.location.href);
+  const url = new URL(location.href);
   url.searchParams.set("sala", state.room);
   history.replaceState(null, "", url);
 }
-async function copyRoomLink() {
-  const url = new URL(window.location.href);
-  url.searchParams.set("sala",state.room);
-  try {
-    await navigator.clipboard.writeText(url.href);
-    showToast("¡Enlace copiado! Envíalo a la otra persona.");
-  } catch {
-    window.prompt("Copia este enlace:",url.href);
-  }
+function copyLink() {
+  const url = new URL(location.href);
+  url.searchParams.set("sala", state.room);
+  navigator.clipboard.writeText(url.href)
+    .then(() => showToast("Enlace de la sala copiado."))
+    .catch(() => window.prompt("Copia este enlace:", url.href));
 }
-async function loadWorld(room=state.room,version=state.roomVersion) {
-  if (!supabase || !state.user || version !== state.roomVersion) return;
-  const request = ++state.requestVersion;
-  const { data,error } = await supabase.from("city_tiles")
-    .select("row_index,col_index,object_type")
-    .eq("room_id",room)
-    .limit(500);
-  if (version !== state.roomVersion || request !== state.requestVersion) return;
-  if (error) {
-    console.error("Error leyendo ciudad:", error);
-    saveMessage("✕ No se pudo leer la ciudad");
-    showToast("No se pudo cargar la ciudad: " + error.message);
+function stopPolling() {
+  if (state.pollTimer) clearInterval(state.pollTimer);
+  state.pollTimer = null;
+  state.roomVersion += 1;
+  state.loadVersion += 1;
+}
+async function loadWorld(room = state.room, version = state.roomVersion) {
+  if (!state.user || room !== state.room || version !== state.roomVersion) return false;
+  const requestId = ++state.loadVersion;
+  const params = new URLSearchParams({
+    room_id: "eq." + room,
+    select: "row_index,col_index,object_type",
+    limit: "200"
+  });
+  try {
+    const rows = await request("/rest/v1/city_tiles?" + params);
+    if (version !== state.roomVersion || requestId !== state.loadVersion) return false;
+    const next = {};
+    for (const item of rows || []) {
+      if (Number.isInteger(item.row_index) && item.row_index >= 0 && item.row_index < SIZE &&
+        Number.isInteger(item.col_index) && item.col_index >= 0 && item.col_index < SIZE &&
+        ["house","building","road","tree","park"].includes(item.object_type)) {
+        next[tileKey(item.row_index,item.col_index)] = item.object_type;
+      }
+    }
+    state.cells = next;
+    renderGrid();
+    saveMessage("✓ Ciudad guardada en Supabase");
+    return true;
+  } catch (error) {
+    if (version !== state.roomVersion) return false;
+    console.error("No se pudo cargar city_tiles:",error);
+    saveMessage("✕ Error al consultar la ciudad");
+    if (error.status === 401) {
+      status("error", "Sesión expirada");
+      updateAuthUI("La sesión expiró. Cierra sesión y vuelve a entrar.");
+    } else {
+      status("error", "Error de datos");
+      cloudHint("Error de Supabase: " + errorMessage(error));
+    }
     return false;
   }
-  const cells = {};
-  for (const item of data || []) {
-    if (item.row_index >= 0 && item.row_index < SIZE &&
-        item.col_index >= 0 && item.col_index < SIZE &&
-        ["house","building","road","tree","park"].includes(item.object_type)) {
-      cells[tileKey(item.row_index,item.col_index)] = item.object_type;
-    }
-  }
-  state.cells = cells;
-  renderGrid();
-  saveMessage("✓ Ciudad guardada en Supabase");
-  return true;
 }
-function scheduleRefresh() {
-  clearTimeout(state.refreshTimer);
+async function joinRoom(value) {
+  stopPolling();
   const version = state.roomVersion;
-  state.refreshTimer = setTimeout(() => { void loadWorld(state.room,version); }, 130);
-}
-async function closeRoom() {
-  state.roomVersion += 1;
-  state.requestVersion += 1;
-  clearTimeout(state.refreshTimer);
-  clearInterval(state.pollTimer);
-  state.pollTimer = null;
-  if (state.channel && supabase) {
-    const old = state.channel;
-    state.channel = null;
-    try { await supabase.removeChannel(old); }
-    catch (error) { console.warn("No se pudo cerrar el canal anterior:", error); }
-  }
-}
-
-async function joinRoom(rawRoom) {
-  const room = cleanRoom(rawRoom);
-  await closeRoom();
-  const version = state.roomVersion;
-  state.room = room;
-  roomInput.value = room;
+  state.room = cleanRoom(value);
+  roomInput.value = state.room;
   updateUrl();
   state.cells = {};
   state.activity = [];
   renderGrid();
   renderActivity();
   renderPlayers();
-
-  if (!supabase || !state.user) {
-    state.mode = "offline";
+  if (!state.user) {
     status("local", "Inicia sesión");
-    cloudHint("Inicia sesión con una de las cuentas de prueba para entrar a la ciudad compartida.");
     saveMessage("○ Inicia sesión para guardar");
+    cloudHint("Inicia sesión para construir y compartir esta ciudad.");
     return;
   }
-
-  state.mode = "connecting";
-  status("connecting", "Abriendo ciudad…");
-  saveMessage("◌ Cargando ciudad…");
-
-  // Las consultas normales no dependen del canal WebSocket.
-  // El juego seguirá funcionando si Supabase Realtime presenta un error.
-  const loaded = await loadWorld(room, version);
-  if (version !== state.roomVersion) return;
-  if (!loaded) {
-    state.mode = "offline";
-    status("error", "Error al cargar");
-    cloudHint("No fue posible leer city_tiles. Verifica los permisos RLS y la conexión de Supabase.");
-    return;
-  }
-
+  status("connecting", "Conectando ciudad…");
+  cloudHint("Cargando mapa guardado de Supabase…");
+  saveMessage("◌ Consultando ciudad…");
+  const ok = await loadWorld(state.room, version);
+  if (!ok || version !== state.roomVersion) return;
   state.mode = "online";
-  status("online", "Ciudad sincronizada");
-  cloudHint("Conectado a Supabase. Tu ciudad está guardada y se sincroniza entre los jugadores sin refrescar.", true);
-  renderPlayers();
-
-  // Sincronización alternativa automática; evita que un problema de
-  // WebSocket deje al jugador sin poder construir o ver cambios.
+  status("online", "Ciudad conectada");
+  cloudHint("Ciudad en línea. Los cambios se guardan en Supabase y aparecen sin refrescar en otros dispositivos.",true);
+  // Sincronización frecuente entre dispositivos sin depender de un WebSocket.
   state.pollTimer = setInterval(() => {
-    if (version === state.roomVersion && state.user &&
+    if (version === state.roomVersion && state.user && !state.busy &&
         document.visibilityState !== "hidden") {
-      void loadWorld(room, version);
+      void loadWorld(state.room, version);
     }
-  }, 900);
-
-  // Intentar también eventos Realtime para que los cambios se reciban
-  // al instante; si falla, se mantiene la sincronización periódica.
-  try {
-    const channel = supabase.channel("city-" + room, {
-      config: { presence: { key: state.user.id } }
-    });
-    state.channel = channel;
-    channel.on("presence", { event: "sync" }, () => {
-      if (version === state.roomVersion) renderPlayers();
-    });
-    channel.on("broadcast", { event: "city_changed" }, ({ payload }) => {
-      if (version !== state.roomVersion || payload?.room !== room) return;
-      logAction(payload);
-      if (payload.tool === "meteor") animateMeteor(Number(payload.row), Number(payload.col));
-      scheduleRefresh();
-    });
-    channel.on("postgres_changes", {
-      event: "*", schema: "public", table: "city_tiles"
-    }, payload => {
-      if (version !== state.roomVersion) return;
-      if (payload.eventType === "DELETE" ||
-          payload.new?.room_id === room || payload.old?.room_id === room) {
-        scheduleRefresh();
-      }
-    });
-    channel.subscribe((subscriptionStatus, error) => {
-      if (version !== state.roomVersion || state.channel !== channel) return;
-      if (subscriptionStatus === "SUBSCRIBED") {
-        status("online", "En tiempo real");
-        void channel.track({
-          uid: state.user.id, name: state.player,
-          joined_at: new Date().toISOString()
-        }).then(() => renderPlayers())
-          .catch(err => console.warn("Presencia no disponible:", err));
-        void loadWorld(room, version);
-      } else if (subscriptionStatus === "CHANNEL_ERROR" || subscriptionStatus === "TIMED_OUT") {
-        console.warn("Realtime falló; continúa la sincronización alternativa:", error);
-        status("online", "Ciudad sincronizada");
-        renderPlayers();
-      } else if (subscriptionStatus === "CLOSED") {
-        status("online", "Ciudad sincronizada");
-      }
-    });
-  } catch (error) {
-    console.warn("Canal Realtime no disponible; sincronización alternativa activada:", error);
-    state.channel = null;
-    status("online", "Ciudad sincronizada");
-    cloudHint("Ciudad conectada y guardada. Si Realtime no funciona, el mapa se actualiza automáticamente sin refrescar.", true);
-  }
+  }, 800);
 }
-async function handleTile(row,col) {
-  // La sesión puede estar activa en Supabase aunque su evento aún no haya
-  // actualizado el estado del juego.
-  if (!state.user && supabase) {
-    const { data, error } = await supabase.auth.getSession();
-    if (!error && data.session?.user) await processSession(data.session);
-  }
-  if (!state.user) return showToast("Primero inicia sesión con una cuenta de prueba.");
-  if (state.mode !== "online") return showToast("Tu sesión está activa. Conectando la ciudad; inténtalo nuevamente.");
-  const room = state.room;
+async function handleTile(row, col) {
+  if (!state.user) return showToast("Inicia sesión para construir y destruir.");
+  if (state.mode !== "online") return showToast("Aún no se pudo conectar la ciudad. Revisa el mensaje a la derecha.");
+  if (state.busy) return;
+  state.busy = true;
   const version = state.roomVersion;
+  const room = state.room;
   const tool = state.tool;
   saveMessage("◌ Guardando cambios…");
   try {
-    let result;
-    if (tool === "meteor") {
-      result = await supabase.from("city_tiles").delete()
-        .eq("room_id",room)
-        .gte("row_index",Math.max(0,row-1))
-        .lte("row_index",Math.min(SIZE-1,row+1))
-        .gte("col_index",Math.max(0,col-1))
-        .lte("col_index",Math.min(SIZE-1,col+1));
-    } else if (tool === "erase") {
-      result = await supabase.from("city_tiles").delete()
-        .eq("room_id",room).eq("row_index",row).eq("col_index",col);
-    } else {
-      result = await supabase.from("city_tiles").upsert({
-        room_id:room,row_index:row,col_index:col,object_type:tool,updated_at:new Date().toISOString()
-      },{onConflict:"room_id,row_index,col_index"});
-    }
-    if (result.error) throw result.error;
-    if (version !== state.roomVersion) return;
-    const action = {
-      id:crypto.randomUUID(),room,tool,row,col,player:state.player,time:Date.now()
-    };
-    logAction(action);
-    if (tool === "meteor") animateMeteor(row,col);
-    await loadWorld(room,version);
-    // Broadcast mejora la respuesta del otro jugador; postgres_changes
-    // sigue siendo la fuente independiente de sincronización.
-    if (state.channel) {
-      try {
-        void state.channel.send({type:"broadcast",event:"city_changed",payload:action})
-          .catch(error => console.warn("Broadcast no disponible:", error));
-      } catch (error) {
-        console.warn("Broadcast no disponible:", error);
+    const params = new URLSearchParams();
+    if (tool === "meteor" || tool === "erase") {
+      params.set("room_id", "eq." + room);
+      if (tool === "meteor") {
+        params.set("row_index", "gte." + Math.max(0, row-1));
+        params.append("row_index", "lte." + Math.min(SIZE-1, row+1));
+        params.set("col_index", "gte." + Math.max(0, col-1));
+        params.append("col_index", "lte." + Math.min(SIZE-1, col+1));
+      } else {
+        params.set("row_index", "eq." + row);
+        params.set("col_index", "eq." + col);
       }
+      await request("/rest/v1/city_tiles?" + params, { method: "DELETE" });
+    } else {
+      params.set("on_conflict", "room_id,row_index,col_index");
+      await request("/rest/v1/city_tiles?" + params, {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: {
+          room_id: room, row_index: row, col_index: col,
+          object_type: tool, updated_at: new Date().toISOString()
+        }
+      });
     }
-  } catch (err) {
-    console.error("No se pudo guardar:",err);
-    saveMessage("✕ Error al guardar");
-    showToast("No se pudo guardar: " + (err?.message || "revisa la conexión"));
-  }
-}
-function updateAuthUI() {
-  const loggedIn = Boolean(state.user);
-  $("authSignedOut").hidden = loggedIn;
-  $("authSignedIn").hidden = !loggedIn;
-  $("userEmailLabel").textContent = state.user?.email || "";
-  $("authStatus").textContent = loggedIn ? "✓ Cuenta conectada" :
-    supabase ? "Entra con una cuenta creada en Authentication → Users." :
-    "Faltan VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY en Vercel.";
-  $("loginButton").disabled = !supabase;
-}
-async function processSession(session) {
-  const user = session?.user || null;
-  if (state.user?.id === user?.id) return;
-  const version = ++state.authChangeVersion;
-  await closeRoom();
-  if (version !== state.authChangeVersion) return;
-  state.user = user;
-  state.player = user ? playerFromAccount(user) : "Jugador";
-  nameInput.value = state.player;
-  updateAuthUI();
-  if (user) {
-    await joinRoom(state.room);
-  } else {
-    state.mode = "offline";
-    state.cells = {};
-    state.activity = [];
-    renderGrid();
+    if (version !== state.roomVersion) return;
+    if (tool === "meteor") animateMeteor(row, col);
+    const action = {
+      tool, player: state.player, time: Date.now()
+    };
+    state.activity.unshift(action);
+    state.activity = state.activity.slice(0,7);
     renderActivity();
-    renderPlayers();
-    status("local","Inicia sesión");
-    cloudHint("Inicia sesión con una de las dos cuentas de prueba. Tu ciudad se guardará en Supabase.");
-    saveMessage("○ Inicia sesión para guardar");
+    const loaded = await loadWorld(room,version);
+    if (loaded) {
+      saveMessage("✓ Construcción y destrucción guardadas");
+      if (tool === "meteor") showToast("☄️ ¡Meteorito! Ciudad actualizada para todos.");
+    }
+  } catch (error) {
+    console.error("No se pudo guardar la acción:", error);
+    saveMessage("✕ No se guardó la acción");
+    showToast("Supabase: " + errorMessage(error));
+  } finally {
+    state.busy = false;
   }
 }
 async function signIn(event) {
   event.preventDefault();
-  if (!supabase) return showToast("Faltan las variables de Supabase en Vercel.");
+  if (!READY) return showToast("Faltan las variables públicas de Supabase.");
   const email = $("emailInput").value.trim();
   const password = $("passwordInput").value;
-  $("loginButton").disabled = true;
-  $("authStatus").textContent = "Verificando cuenta…";
+  const button = $("loginButton");
+  button.disabled = true;
+  updateAuthUI("Comprobando correo y contraseña…");
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({email,password});
-    if (error) throw error;
-    if (!data.session?.user) throw new Error("Supabase no devolvió una sesión válida.");
-    // La sesión se aplica inmediatamente, sin esperar al evento de Auth.
-    await processSession(data.session);
-    if (!state.user) {
-      const current = await supabase.auth.getSession();
-      if (current.data.session?.user) await processSession(current.data.session);
+    const response = await http("/auth/v1/token?grant_type=password", {
+      method: "POST", body: { email, password }
+    });
+    if (!response?.user?.id || !response.access_token || !response.refresh_token) {
+      throw new Error("Supabase no devolvió una sesión completa.");
     }
-    if (!state.user) throw new Error("No se pudo activar la sesión del juego.");
+    saveSession({
+      ...response,
+      expires_at: Math.floor(Date.now()/1000) + Number(response.expires_in || 3600)
+    });
+    state.user = response.user;
+    state.player = cleanName(localStorage.getItem("citychaos_name_" + state.user.id) || userLabel());
+    nameInput.value = state.player;
     $("passwordInput").value = "";
-    showToast("¡Sesión activa! Ya puedes construir en tu ciudad.");
-  } catch (err) {
-    console.error("No se pudo completar el inicio de sesión:",err);
-    $("authStatus").textContent = "No se pudo activar la sesión: " + (err?.message || "revisa tus datos");
-    showToast("Error al iniciar sesión: " + (err?.message || "comprueba tus datos"));
+    updateAuthUI();
+    renderPlayers();
+    await joinRoom(state.room);
+    if (state.mode === "online") showToast("¡Sesión iniciada! Ya puedes construir.");
+    else showToast("Sesión iniciada; revisa el estado de conexión de la ciudad.");
+  } catch (error) {
+    const message = errorMessage(error);
+    updateAuthUI("No fue posible iniciar sesión: " + message);
+    showToast("Error: " + message);
   } finally {
-    $("loginButton").disabled = false;
+    button.disabled = false;
   }
 }
-async function logout() {
-  if (!supabase) return;
-  const {error} = await supabase.auth.signOut();
-  if (error) showToast("No se pudo cerrar sesión: " + error.message);
-  else showToast("Sesión cerrada.");
+async function signOut() {
+  const token = state.session?.access_token;
+  stopPolling();
+  saveSession(null);
+  state.user = null;
+  state.player = "Jugador";
+  state.mode = "offline";
+  state.cells = {};
+  state.activity = [];
+  renderGrid();
+  renderActivity();
+  renderPlayers();
+  updateAuthUI();
+  status("local", "Inicia sesión");
+  cloudHint("Utiliza una de las cuentas de prueba para entrar a la misma ciudad.");
+  saveMessage("○ Inicia sesión para guardar");
+  if (token) {
+    try { await http("/auth/v1/logout", { method: "POST", token }); }
+    catch (error) { console.warn("El cierre remoto no se confirmó:",error); }
+  }
+  showToast("Sesión cerrada.");
 }
-async function savePlayerName() {
+function savePlayerName() {
   state.player = cleanName(nameInput.value);
   nameInput.value = state.player;
-  if (state.user) {
-    localStorage.setItem("citychaos_name_" + state.user.id,state.player);
-    if (state.channel && state.mode === "online") {
-      try {
-        const result = await state.channel.track({
-          uid:state.user.id,name:state.player,joined_at:new Date().toISOString()
-        });
-        if (result !== "ok") showToast("Nombre guardado; presencia no actualizada.");
-      } catch (error) {
-        console.warn("Error al actualizar Presence:", error);
-      }
-    }
-  }
+  if (state.user) localStorage.setItem("citychaos_name_" + state.user.id, state.player);
   renderPlayers();
   showToast("Nombre guardado: " + state.player);
 }
+async function restoreSession() {
+  status("connecting", "Comprobando sesión…");
+  if (!READY) {
+    status("error", "Falta configuración");
+    cloudHint("Configura VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY en Production y redepliega.");
+    saveMessage("✕ Falta configuración de Supabase");
+    updateAuthUI();
+    return;
+  }
+  const stored = readSession();
+  if (!stored) {
+    status("local", "Inicia sesión");
+    cloudHint("Entra con uno de los dos usuarios de Supabase Authentication.");
+    updateAuthUI();
+    return;
+  }
+  state.session = stored;
+  try {
+    const token = await validToken();
+    const user = await http("/auth/v1/user", { token });
+    if (!user?.id) throw new Error("La sesión ya no es válida.");
+    state.user = user;
+    state.player = cleanName(localStorage.getItem("citychaos_name_" + user.id) || userLabel());
+    nameInput.value = state.player;
+    updateAuthUI();
+    renderPlayers();
+    await joinRoom(state.room);
+  } catch (error) {
+    console.warn("No se pudo recuperar la sesión anterior:",error);
+    state.user = null;
+    saveSession(null);
+    state.mode = "offline";
+    status("local", "Inicia sesión");
+    updateAuthUI("La sesión anterior caducó. Inicia sesión nuevamente.");
+    cloudHint("Introduce una de las dos cuentas de prueba para recuperar la ciudad.");
+  }
+}
 function setupEvents() {
-  document.querySelectorAll("[data-tool]").forEach(button => {
-    button.addEventListener("click", () => selectTool(button.dataset.tool));
-  });
-  grid.addEventListener("click",event => {
+  document.querySelectorAll("[data-tool]").forEach(button =>
+    button.addEventListener("click", () => selectTool(button.dataset.tool))
+  );
+  grid.addEventListener("click", event => {
     const tile = event.target.closest(".tile");
-    if (tile) void handleTile(Number(tile.dataset.row),Number(tile.dataset.col));
+    if (tile) void handleTile(Number(tile.dataset.row), Number(tile.dataset.col));
   });
-  grid.addEventListener("pointerover",event => {
+  grid.addEventListener("pointerover", event => {
     const tile = event.target.closest(".tile");
-    if (tile) previewImpact(Number(tile.dataset.row),Number(tile.dataset.col));
+    if (tile) previewImpact(Number(tile.dataset.row), Number(tile.dataset.col));
   });
-  grid.addEventListener("pointerleave",clearPreview);
-  $("joinRoomButton").addEventListener("click",() => { void joinRoom(roomInput.value); });
-  roomInput.addEventListener("keydown",event => { if (event.key === "Enter") void joinRoom(roomInput.value); });
-  $("newRoomButton").addEventListener("click",() => { void joinRoom("CITY-" + Math.random().toString(36).slice(2,8).toUpperCase()); });
-  $("copyLinkButton").addEventListener("click",copyRoomLink);
-  $("shareTopButton").addEventListener("click",copyRoomLink);
-  $("saveNameButton").addEventListener("click",() => { void savePlayerName(); });
-  nameInput.addEventListener("keydown",event => { if (event.key === "Enter") void savePlayerName(); });
-  $("loginForm").addEventListener("submit",signIn);
-  $("logoutButton").addEventListener("click",logout);
+  grid.addEventListener("pointerleave", clearPreview);
+  $("joinRoomButton").addEventListener("click", () => { void joinRoom(roomInput.value); });
+  roomInput.addEventListener("keydown", event => {
+    if (event.key === "Enter") void joinRoom(roomInput.value);
+  });
+  $("newRoomButton").addEventListener("click", () =>
+    void joinRoom("CITY-" + Math.random().toString(36).slice(2,8).toUpperCase())
+  );
+  $("copyLinkButton").addEventListener("click", copyLink);
+  $("shareTopButton").addEventListener("click", copyLink);
+  $("saveNameButton").addEventListener("click", savePlayerName);
+  nameInput.addEventListener("keydown", event => {
+    if (event.key === "Enter") savePlayerName();
+  });
+  $("loginForm").addEventListener("submit", signIn);
+  $("logoutButton").addEventListener("click", () => { void signOut(); });
   const dialog = $("helpDialog");
-  $("helpButton").addEventListener("click",() => dialog.showModal());
-  $("closeHelpButton").addEventListener("click",() => dialog.close());
-  $("gotItButton").addEventListener("click",() => dialog.close());
-  dialog.addEventListener("click",event => { if (event.target === dialog) dialog.close(); });
-  document.addEventListener("keydown",event => {
+  $("helpButton").addEventListener("click", () => dialog.showModal());
+  $("closeHelpButton").addEventListener("click", () => dialog.close());
+  $("gotItButton").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", event => {
+    if (event.target === dialog) dialog.close();
+  });
+  document.addEventListener("keydown", event => {
     if (event.altKey || event.ctrlKey || event.metaKey ||
-        ["INPUT","TEXTAREA"].includes(document.activeElement.tagName) || dialog.open) return;
-    const tools = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"erase"};
-    if (tools[event.key]) selectTool(tools[event.key]);
+      ["INPUT","TEXTAREA"].includes(document.activeElement.tagName) || dialog.open) return;
+    const options = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"erase"};
+    if (options[event.key]) selectTool(options[event.key]);
   });
 }
-
 initGrid();
-setupEvents();
-selectTool("house");
 renderGrid();
 renderActivity();
+renderPlayers();
+selectTool("house");
+setupEvents();
 updateUrl();
 updateAuthUI();
-if (supabase) {
-  supabase.auth.onAuthStateChange(() => {
-    // Tomar la sesión ACTUAL evita que un evento inicial antiguo (sin sesión)
-    // reemplace un inicio de sesión que acaba de completarse.
-    setTimeout(() => {
-      void supabase.auth.getSession().then(({data,error}) => {
-        if (error) throw error;
-        return processSession(data.session);
-      }).catch(err => {
-        console.error("Error al sincronizar la sesión:",err);
-        showToast("No se pudo conectar tu sesión. Recarga la página.");
-      });
-    },0);
-  });
-  status("connecting","Comprobando sesión…");
-  // Recuperación de sesión incluso después de refrescar.
-  void supabase.auth.getSession().then(({data,error}) => {
-    if (error) throw error;
-    if (data.session?.user) return processSession(data.session);
-  }).catch(err => console.error("No se pudo recuperar la sesión:",err));
-} else {
-  status("error","Falta configuración");
-  cloudHint("Configura las dos variables VITE_SUPABASE_* en Vercel y vuelve a desplegar.");
-  saveMessage("✕ Supabase no está configurado");
-}
+void restoreSession();
