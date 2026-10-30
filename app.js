@@ -339,8 +339,14 @@ async function joinRoom(rawRoom) {
   });
 }
 async function handleTile(row,col) {
+  // La sesión puede estar activa en Supabase aunque su evento aún no haya
+  // actualizado el estado del juego.
+  if (!state.user && supabase) {
+    const { data, error } = await supabase.auth.getSession();
+    if (!error && data.session?.user) await processSession(data.session);
+  }
   if (!state.user) return showToast("Primero inicia sesión con una cuenta de prueba.");
-  if (state.mode !== "online") return showToast("La conexión aún no está lista; inténtalo de nuevo.");
+  if (state.mode !== "online") return showToast("Tu sesión está activa. Conectando la ciudad; inténtalo nuevamente.");
   const room = state.room;
   const version = state.roomVersion;
   const tool = state.tool;
@@ -423,13 +429,22 @@ async function signIn(event) {
   $("loginButton").disabled = true;
   $("authStatus").textContent = "Verificando cuenta…";
   try {
-    const {error} = await supabase.auth.signInWithPassword({email,password});
+    const { data, error } = await supabase.auth.signInWithPassword({email,password});
     if (error) throw error;
+    if (!data.session?.user) throw new Error("Supabase no devolvió una sesión válida.");
+    // La sesión se aplica inmediatamente, sin esperar al evento de Auth.
+    await processSession(data.session);
+    if (!state.user) {
+      const current = await supabase.auth.getSession();
+      if (current.data.session?.user) await processSession(current.data.session);
+    }
+    if (!state.user) throw new Error("No se pudo activar la sesión del juego.");
     $("passwordInput").value = "";
-    showToast("¡Sesión iniciada! Entrando a tu ciudad.");
+    showToast("¡Sesión activa! Ya puedes construir en tu ciudad.");
   } catch (err) {
-    $("authStatus").textContent = "No se pudo entrar: " + (err?.message || "revisa tus datos");
-    showToast("Revisa el correo, contraseña y confirmación del usuario.");
+    console.error("No se pudo completar el inicio de sesión:",err);
+    $("authStatus").textContent = "No se pudo activar la sesión: " + (err?.message || "revisa tus datos");
+    showToast("Error al iniciar sesión: " + (err?.message || "comprueba tus datos"));
   } finally {
     $("loginButton").disabled = false;
   }
@@ -499,10 +514,18 @@ updateUrl();
 updateAuthUI();
 if (supabase) {
   supabase.auth.onAuthStateChange((_event,session) => {
-    // La llamada diferida evita reentrar en Supabase dentro del callback de Auth.
-    setTimeout(() => { void processSession(session); },0);
+    // Diferir la sincronización evita reentrar en Auth desde su callback.
+    setTimeout(() => { void processSession(session).catch(err => {
+      console.error("Error al sincronizar la sesión:",err);
+      showToast("No se pudo conectar tu sesión. Recarga la página.");
+    }); },0);
   });
   status("connecting","Comprobando sesión…");
+  // Recuperación de sesión incluso después de refrescar.
+  void supabase.auth.getSession().then(({data,error}) => {
+    if (error) throw error;
+    if (data.session?.user) return processSession(data.session);
+  }).catch(err => console.error("No se pudo recuperar la sesión:",err));
 } else {
   status("error","Falta configuración");
   cloudHint("Configura las dos variables VITE_SUPABASE_* en Vercel y vuelve a desplegar.");
