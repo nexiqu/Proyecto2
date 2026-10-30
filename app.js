@@ -24,7 +24,7 @@ const state = {
   room: cleanRoom(new URLSearchParams(location.search).get("sala") || "CIUDAD-01"),
   user: null, tool: "house", mode: "offline", channel: null,
   cells: {}, activity: [], player: "Jugador",
-  roomVersion: 0, requestVersion: 0, refreshTimer: null, toastTimer: null,
+  roomVersion: 0, requestVersion: 0, refreshTimer: null, pollTimer: null, toastTimer: null,
   authChangeVersion: 0
 };
 roomInput.value = state.room;
@@ -135,11 +135,13 @@ function renderPlayers() {
   host.textContent = "";
   let players = [];
   if (state.channel && state.user) {
-    for (const presences of Object.values(state.channel.presenceState())) {
-      for (const entry of presences) players.push({
-        uid: entry.uid, name: cleanName(entry.name), self: entry.uid === state.user.id
-      });
-    }
+    try {
+      for (const presences of Object.values(state.channel.presenceState())) {
+        for (const entry of presences) players.push({
+          uid: entry.uid, name: cleanName(entry.name), self: entry.uid === state.user.id
+        });
+      }
+    } catch (error) { console.warn("No se pudo consultar Presence:", error); }
   }
   if (!players.length && state.user) players = [{ uid: state.user.id, name: state.player, self: true }];
   const dedup = new Map(players.map(p => [p.uid, p]));
@@ -244,7 +246,7 @@ async function loadWorld(room=state.room,version=state.roomVersion) {
     console.error("Error leyendo ciudad:", error);
     saveMessage("✕ No se pudo leer la ciudad");
     showToast("No se pudo cargar la ciudad: " + error.message);
-    return;
+    return false;
   }
   const cells = {};
   for (const item of data || []) {
@@ -257,6 +259,7 @@ async function loadWorld(room=state.room,version=state.roomVersion) {
   state.cells = cells;
   renderGrid();
   saveMessage("✓ Ciudad guardada en Supabase");
+  return true;
 }
 function scheduleRefresh() {
   clearTimeout(state.refreshTimer);
@@ -267,15 +270,20 @@ async function closeRoom() {
   state.roomVersion += 1;
   state.requestVersion += 1;
   clearTimeout(state.refreshTimer);
+  clearInterval(state.pollTimer);
+  state.pollTimer = null;
   if (state.channel && supabase) {
     const old = state.channel;
     state.channel = null;
-    await supabase.removeChannel(old);
+    try { await supabase.removeChannel(old); }
+    catch (error) { console.warn("No se pudo cerrar el canal anterior:", error); }
   }
 }
+
 async function joinRoom(rawRoom) {
   const room = cleanRoom(rawRoom);
   await closeRoom();
+  const version = state.roomVersion;
   state.room = room;
   roomInput.value = room;
   updateUrl();
@@ -284,59 +292,93 @@ async function joinRoom(rawRoom) {
   renderGrid();
   renderActivity();
   renderPlayers();
+
   if (!supabase || !state.user) {
+    state.mode = "offline";
     status("local", "Inicia sesión");
-    cloudHint("Inicia sesión con uno de los usuarios de prueba para entrar a la ciudad compartida.");
+    cloudHint("Inicia sesión con una de las cuentas de prueba para entrar a la ciudad compartida.");
     saveMessage("○ Inicia sesión para guardar");
     return;
   }
+
   state.mode = "connecting";
-  status("connecting", "Conectando…");
+  status("connecting", "Abriendo ciudad…");
   saveMessage("◌ Cargando ciudad…");
-  const version = state.roomVersion;
-  const channel = supabase.channel("city-" + room, {
-    config: { presence: { key: state.user.id } }
-  });
-  state.channel = channel;
-  channel.on("presence", { event:"sync" }, () => {
-    if (version === state.roomVersion) renderPlayers();
-  });
-  channel.on("broadcast", { event:"city_changed" }, ({ payload }) => {
-    if (version !== state.roomVersion || payload?.room !== room) return;
-    logAction(payload);
-    if (payload.tool === "meteor") animateMeteor(Number(payload.row),Number(payload.col));
-    scheduleRefresh();
-  });
-  channel.on("postgres_changes", {
-    event:"*", schema:"public",table:"city_tiles"
-  }, payload => {
-    if (version !== state.roomVersion) return;
-    // DELETE puede no incluir todas las columnas según RLS;
-    // releer el mapa completo garantiza que ambos vean destrucciones.
-    if (payload.eventType === "DELETE" ||
-        payload.new?.room_id === room || payload.old?.room_id === room) {
+
+  // Las consultas normales no dependen del canal WebSocket.
+  // El juego seguirá funcionando si Supabase Realtime presenta un error.
+  const loaded = await loadWorld(room, version);
+  if (version !== state.roomVersion) return;
+  if (!loaded) {
+    state.mode = "offline";
+    status("error", "Error al cargar");
+    cloudHint("No fue posible leer city_tiles. Verifica los permisos RLS y la conexión de Supabase.");
+    return;
+  }
+
+  state.mode = "online";
+  status("online", "Ciudad sincronizada");
+  cloudHint("Conectado a Supabase. Tu ciudad está guardada y se sincroniza entre los jugadores sin refrescar.", true);
+  renderPlayers();
+
+  // Sincronización alternativa automática; evita que un problema de
+  // WebSocket deje al jugador sin poder construir o ver cambios.
+  state.pollTimer = setInterval(() => {
+    if (version === state.roomVersion && state.user &&
+        document.visibilityState !== "hidden") {
+      void loadWorld(room, version);
+    }
+  }, 900);
+
+  // Intentar también eventos Realtime para que los cambios se reciban
+  // al instante; si falla, se mantiene la sincronización periódica.
+  try {
+    const channel = supabase.channel("city-" + room, {
+      config: { presence: { key: state.user.id } }
+    });
+    state.channel = channel;
+    channel.on("presence", { event: "sync" }, () => {
+      if (version === state.roomVersion) renderPlayers();
+    });
+    channel.on("broadcast", { event: "city_changed" }, ({ payload }) => {
+      if (version !== state.roomVersion || payload?.room !== room) return;
+      logAction(payload);
+      if (payload.tool === "meteor") animateMeteor(Number(payload.row), Number(payload.col));
       scheduleRefresh();
-    }
-  });
-  channel.subscribe(async (subscriptionStatus) => {
-    if (version !== state.roomVersion || state.channel !== channel) return;
-    if (subscriptionStatus === "SUBSCRIBED") {
-      state.mode = "online";
-      status("online", "En tiempo real");
-      cloudHint("Conectado a Supabase. Comparte esta sala: los dos jugadores verán los cambios automáticamente.",true);
-      const tracked = await channel.track({uid:state.user.id,name:state.player,joined_at:new Date().toISOString()});
-      if (tracked !== "ok") console.warn("No se pudo compartir la presencia:",tracked);
-      void loadWorld(room,version);
-    } else if (subscriptionStatus === "CHANNEL_ERROR" || subscriptionStatus === "TIMED_OUT") {
-      state.mode = "connecting";
-      status("error", "Reconectando…");
-      cloudHint("Hay un problema de conexión en tiempo real. Revisa internet y la publicación Realtime de city_tiles.");
-      void loadWorld(room,version);
-    } else if (subscriptionStatus === "CLOSED") {
-      state.mode = "offline";
-      status("error","Desconectado");
-    }
-  });
+    });
+    channel.on("postgres_changes", {
+      event: "*", schema: "public", table: "city_tiles"
+    }, payload => {
+      if (version !== state.roomVersion) return;
+      if (payload.eventType === "DELETE" ||
+          payload.new?.room_id === room || payload.old?.room_id === room) {
+        scheduleRefresh();
+      }
+    });
+    channel.subscribe((subscriptionStatus, error) => {
+      if (version !== state.roomVersion || state.channel !== channel) return;
+      if (subscriptionStatus === "SUBSCRIBED") {
+        status("online", "En tiempo real");
+        void channel.track({
+          uid: state.user.id, name: state.player,
+          joined_at: new Date().toISOString()
+        }).then(() => renderPlayers())
+          .catch(err => console.warn("Presencia no disponible:", err));
+        void loadWorld(room, version);
+      } else if (subscriptionStatus === "CHANNEL_ERROR" || subscriptionStatus === "TIMED_OUT") {
+        console.warn("Realtime falló; continúa la sincronización alternativa:", error);
+        status("online", "Ciudad sincronizada");
+        renderPlayers();
+      } else if (subscriptionStatus === "CLOSED") {
+        status("online", "Ciudad sincronizada");
+      }
+    });
+  } catch (error) {
+    console.warn("Canal Realtime no disponible; sincronización alternativa activada:", error);
+    state.channel = null;
+    status("online", "Ciudad sincronizada");
+    cloudHint("Ciudad conectada y guardada. Si Realtime no funciona, el mapa se actualiza automáticamente sin refrescar.", true);
+  }
 }
 async function handleTile(row,col) {
   // La sesión puede estar activa en Supabase aunque su evento aún no haya
@@ -379,7 +421,12 @@ async function handleTile(row,col) {
     // Broadcast mejora la respuesta del otro jugador; postgres_changes
     // sigue siendo la fuente independiente de sincronización.
     if (state.channel) {
-      void state.channel.send({type:"broadcast",event:"city_changed",payload:action});
+      try {
+        void state.channel.send({type:"broadcast",event:"city_changed",payload:action})
+          .catch(error => console.warn("Broadcast no disponible:", error));
+      } catch (error) {
+        console.warn("Broadcast no disponible:", error);
+      }
     }
   } catch (err) {
     console.error("No se pudo guardar:",err);
@@ -461,10 +508,14 @@ async function savePlayerName() {
   if (state.user) {
     localStorage.setItem("citychaos_name_" + state.user.id,state.player);
     if (state.channel && state.mode === "online") {
-      const result = await state.channel.track({
-        uid:state.user.id,name:state.player,joined_at:new Date().toISOString()
-      });
-      if (result !== "ok") showToast("Nombre guardado en tu navegador; presencia no actualizada.");
+      try {
+        const result = await state.channel.track({
+          uid:state.user.id,name:state.player,joined_at:new Date().toISOString()
+        });
+        if (result !== "ok") showToast("Nombre guardado; presencia no actualizada.");
+      } catch (error) {
+        console.warn("Error al actualizar Presence:", error);
+      }
     }
   }
   renderPlayers();
