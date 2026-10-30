@@ -9,9 +9,9 @@ Videojuego web en el que **dos usuarios autenticados** construyen y destruyen un
 - Destruir con un meteorito ☄️ (zona de 3 × 3) o borrar una sola casilla.
 - Usar diferentes salas con códigos y enlaces compartibles.
 - Iniciar sesión con **correo y contraseña** de Supabase Authentication.
-- Compartir modificaciones entre navegadores con **Supabase Realtime** (Postgres Changes y Broadcast). Si falla el canal WebSocket, los cambios se siguen sincronizando automáticamente mediante lectura de Supabase cada ~0,9 segundos, sin necesidad de recargar.
+- Compartir modificaciones automáticamente entre navegadores consultando la base de datos cada ~0,8 segundos, **sin recargar**. Esta versión evita la biblioteca Realtime que ocasionaba un error de constructor.
 - Guardar el mapa en una tabla de Supabase y recuperarlo tras refrescar o volver a entrar a la misma sala.
-- Mostrar jugadores conectados mediante Presence y actividad de la sesión.
+- Mostrar al jugador de la sesión actual y la actividad de esta sesión. La lista completa de jugadores conectados queda pendiente.
 
 **El código está implementado; para funcionar entre dispositivos debe configurarse y probarse con tu proyecto Supabase y el despliegue de Vercel.**
 
@@ -113,7 +113,7 @@ Para desarrollo local, usa Node.js, `npm install`, copia `.env.example` como `.e
 4. Planta un árbol en la segunda: debe aparecer en la primera.
 5. Lanza un meteorito en la primera: ambos mapas deben mostrar las mismas casillas destruidas.
 6. **Refresca las dos páginas**: la ciudad debe permanecer igual.
-7. Si aparece algún error, comprueba la consola del navegador, las reglas RLS, las variables de Vercel y que `city_tiles` esté en la publicación `supabase_realtime`.
+7. Si aparece algún error, comprueba la consola del navegador, las reglas RLS, las variables de Vercel y que ambas cuentas estén creadas en Supabase Authentication.
 
 ## Etapas siguientes
 - Más edificios y decoraciones.
@@ -121,4 +121,4 @@ Para desarrollo local, usa Node.js, `npm install`, copia `.env.example` como `.e
 - Puntuaciones, objetivos y acceso a salas privadas.
 
 ## Tecnologías
-HTML · CSS · JavaScript · **Vite** · **Supabase Authentication** · **Supabase Database** · **Supabase Realtime** · **Vercel**
+HTML · CSS · JavaScript · **Vite** · **Supabase Authentication** · **Supabase Database** · **Sincronización automática** · **Vercel**
