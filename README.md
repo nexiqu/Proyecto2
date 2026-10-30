@@ -22,7 +22,6 @@ Videojuego web en el que **dos usuarios autenticados** construyen y destruyen un
 - `package.json`: dependencias y comandos de Vite.
 - `vercel.json`: configuración de compilación de Vercel.
 - `.env.example`: ejemplo sin credenciales.
-- `firebase-config.js`: archivo de la primera versión; **ya no se usa**.
 
 ## 1. Base de datos de Supabase
 
