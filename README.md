@@ -1,31 +1,92 @@
 # 🏙️ City Chaos — Build & Destroy
 
-Proyecto 2 · Taller de la Computación
+**Proyecto 2 · Taller de la Computación**
 
-Videojuego web en el que **dos usuarios autenticados** construyen y destruyen una ciudad sobre un mapa de 12 × 12. Los cambios se guardan en **Supabase** y se reciben en tiempo real, incluso desde dispositivos diferentes.
+City Chaos es una aplicación web colaborativa en la que varias personas construyen y modifican una ciudad compartida sobre un tablero de **12 × 12 casillas**. Cada jugador inicia sesión con una cuenta de Supabase, entra a una sala y puede colocar construcciones o destruirlas. El estado del mapa se almacena en Supabase para que siga disponible después de recargar la página o abrirla en otro dispositivo.
 
-## Funciones implementadas
-- Crear casas 🏠, edificios 🏢, calles 🛣️, árboles 🌳 y jardines 🌷.
-- Destruir con un meteorito ☄️ (zona de 3 × 3) o borrar una sola casilla.
-- Usar diferentes salas con códigos y enlaces compartibles.
-- Iniciar sesión con **correo y contraseña** de Supabase Authentication.
-- Compartir modificaciones automáticamente entre navegadores consultando la base de datos cada ~0,8 segundos, **sin recargar**. Esta versión evita la biblioteca Realtime que ocasionaba un error de constructor.
-- Guardar el mapa en una tabla de Supabase y recuperarlo tras refrescar o volver a entrar a la misma sala.
-- Mostrar al jugador de la sesión actual y la actividad de esta sesión. La lista completa de jugadores conectados queda pendiente.
+- **Aplicación publicada:** https://proyecto22-gamma.vercel.app/
+- **Repositorio:** https://github.com/nexiqu/Proyecto2
+- **Rama principal:** `main`
 
-**El código está implementado; para funcionar entre dispositivos debe configurarse y probarse con tu proyecto Supabase y el despliegue de Vercel.**
+---
 
-## Archivos
-- `index.html`: interfaz del juego y formulario de acceso.
-- `styles.css`: diseño, efectos y adaptación a pantallas.
-- `app.js`: lógica de construcción, destrucción, inicio de sesión, guardado y multijugador.
-- `package.json`: dependencias y comandos de Vite.
-- `vercel.json`: configuración de compilación de Vercel.
-- `.env.example`: ejemplo sin credenciales.
+## Tabla de contenidos
 
-## 1. Base de datos de Supabase
+- [Características](#características)
+- [Tecnologías y cómo funciona](#tecnologías-y-cómo-funciona)
+- [Estructura del proyecto](#estructura-del-proyecto)
+- [Requisitos](#requisitos)
+- [Configuración de Supabase](#1-configuración-de-supabase)
+- [Variables de entorno](#2-variables-de-entorno)
+- [Ejecutar en local](#3-ejecutar-en-local)
+- [Publicar en Vercel](#4-publicar-en-vercel)
+- [Probar el modo multijugador](#5-probar-el-modo-multijugador)
+- [Solución de problemas](#solución-de-problemas)
+- [Limitaciones conocidas y siguientes pasos](#limitaciones-conocidas-y-siguientes-pasos)
+- [Seguridad](#seguridad)
 
-En Supabase → SQL Editor ejecuta estas instrucciones **solo si todavía no creaste la tabla**:
+## Características
+
+### Construcción
+- **Casita:** coloca una casa en una casilla.
+- **Edificio:** coloca un edificio.
+- **Carretera:** crea caminos.
+- **Árbol:** agrega naturaleza.
+- **Jardín:** agrega flores y zonas verdes.
+
+### Destrucción
+- **Meteorito:** elimina las construcciones dentro de un área de hasta 3 × 3 casillas alrededor del punto seleccionado. Cerca de los bordes del tablero, el área se limita al mapa.
+- **Eliminar:** borra el objeto de una sola casilla.
+
+### Salas y persistencia
+- Cada sala tiene un código, por ejemplo `CIUDAD-01`.
+- Se puede crear una sala nueva o compartir el enlace de una sala existente.
+- El código de sala se incluye en la dirección como parámetro `?sala=...`.
+- Las construcciones se guardan en Supabase y se recuperan al entrar nuevamente a esa sala.
+- Los cambios de otros jugadores se consultan automáticamente cada **800 ms aproximadamente**, mientras la pestaña está visible. No hace falta recargar la página.
+
+### Cuentas
+- El acceso se realiza con correo y contraseña mediante Supabase Authentication.
+- Las cuentas de prueba se crean desde el panel de Supabase; la aplicación no tiene un formulario público de registro.
+
+## Tecnologías y cómo funciona
+
+- **HTML, CSS y JavaScript** para la interfaz y la lógica del juego.
+- **Vite** para desarrollo y compilación.
+- **Supabase Authentication** para iniciar y cerrar sesión.
+- **Supabase Database (Postgres) y REST API** para leer, guardar y eliminar construcciones.
+- **Vercel** para publicar la aplicación.
+
+La aplicación llama directamente a los endpoints HTTPS de Supabase desde `app.js`. La sesión se conserva en el almacenamiento local del navegador y se renueva cuando es necesario. La sincronización entre navegadores se hace mediante consultas periódicas a la tabla `city_tiles`; **esta versión no utiliza Supabase Realtime ni WebSockets**.
+
+## Estructura del proyecto
+
+| Archivo | Función |
+| --- | --- |
+| `index.html` | Estructura de la página, tablero, herramientas, sala y formulario de inicio de sesión. |
+| `styles.css` | Estilos, distribución adaptable, animaciones y apariencia visual. |
+| `app.js` | Inicio de sesión, gestión de sesión, construcción, destrucción, lectura y escritura de datos, y sincronización periódica. |
+| `package.json` | Dependencias y comandos de Vite. |
+| `vercel.json` | Configuración de compilación y publicación en Vercel. |
+| `.env.example` | Nombres de las variables necesarias, con valores de ejemplo que no son credenciales reales. |
+| `.gitignore` | Archivos locales y secretos que no deben subirse al repositorio. |
+
+## Requisitos
+
+Para trabajar con el proyecto necesitas:
+
+- Node.js (versión LTS recomendada) y npm.
+- Una cuenta de Supabase y un proyecto de base de datos.
+- Una cuenta de Vercel para publicar la aplicación.
+- Un repositorio GitHub conectado a Vercel (opcional para ejecutar localmente).
+
+## 1. Configuración de Supabase
+
+### 1.1 Crear la tabla
+
+Abre tu proyecto en Supabase, entra en **SQL Editor → New query**, pega el siguiente SQL y pulsa **Run**.
+
+Este script crea la tabla si no existe y configura las políticas de acceso para usuarios autenticados. Los `DROP POLICY IF EXISTS` permiten volver a ejecutar la configuración sin duplicar las políticas.
 
 ```sql
 create table if not exists public.city_tiles (
@@ -41,84 +102,195 @@ create table if not exists public.city_tiles (
 
 alter table public.city_tiles enable row level security;
 
+drop policy if exists "Los jugadores pueden ver ciudades"
+  on public.city_tiles;
 create policy "Los jugadores pueden ver ciudades"
   on public.city_tiles for select
   to authenticated using (true);
 
+drop policy if exists "Los jugadores pueden construir"
+  on public.city_tiles;
 create policy "Los jugadores pueden construir"
   on public.city_tiles for insert
   to authenticated with check (true);
 
+drop policy if exists "Los jugadores pueden modificar construcciones"
+  on public.city_tiles;
 create policy "Los jugadores pueden modificar construcciones"
   on public.city_tiles for update
   to authenticated using (true) with check (true);
 
+drop policy if exists "Los jugadores pueden destruir construcciones"
+  on public.city_tiles;
 create policy "Los jugadores pueden destruir construcciones"
   on public.city_tiles for delete
   to authenticated using (true);
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname='supabase_realtime'
-      and schemaname='public'
-      and tablename='city_tiles'
-  ) then
-    alter publication supabase_realtime add table public.city_tiles;
-  end if;
-end $$;
-
-alter table public.city_tiles replica identity full;
 ```
 
-> **Nota:** las políticas permiten a cualquier usuario autenticado leer y modificar todas las salas conocidas. Es suficiente para la práctica colaborativa, pero **no son salas privadas ni reglas apropiadas para datos sensibles**. No introduzcas datos personales en la ciudad. Para uso público serio haría falta restringir membresías, validar acciones y aplicar límites.
+La clave primaria compuesta `(room_id, row_index, col_index)` permite almacenar como máximo un objeto por casilla y sala. Al construir sobre una casilla ocupada, la aplicación reemplaza el objeto existente.
 
-## 2. Crear los dos jugadores de prueba
+**Importante:** la aplicación usa consultas REST periódicas. No necesitas agregar `city_tiles` a la publicación `supabase_realtime` para que funcione esta versión.
 
-En Supabase → **Authentication → Users → Add user → Create new user**, crea dos cuentas de prueba con correos diferentes y contraseñas diferentes. Si aparece, selecciona la opción para confirmar el usuario automáticamente.
+### 1.2 Crear usuarios de prueba
 
-**No pongas las contraseñas en GitHub ni en Vercel.** El juego pide correo y contraseña desde su propio formulario y utiliza `supabase.auth.signInWithPassword()`.
+1. En Supabase, abre **Authentication → Users**.
+2. Pulsa **Add user → Create new user**.
+3. Crea una cuenta con un correo de prueba y una contraseña.
+4. Si aparece la opción, confirma automáticamente el usuario.
+5. Repite el proceso para crear una segunda cuenta con otro correo.
 
-## 3. Variables de entorno de Vercel
+Usa las dos cuentas para probar la interacción desde dos navegadores o dispositivos diferentes. No publiques las contraseñas.
 
-En Vercel → tu proyecto → **Settings → Environment Variables**, configura ambas variables de tipo **Config**:
+### 1.3 Obtener las credenciales públicas
 
-| Key | Value |
+En el panel de Supabase, abre **Connect** o **Project Settings → API Keys / Data API** y copia:
+
+- **Project URL**, con formato `https://<tu-proyecto>.supabase.co`.
+- **Publishable key**, que comienza con `sb_publishable_`.
+
+Los nombres de las variables deben coincidir exactamente con los que utiliza el código.
+
+## 2. Variables de entorno
+
+La aplicación necesita estas dos variables:
+
+| Nombre | Valor |
 | --- | --- |
-| `VITE_SUPABASE_URL` | Project URL de Supabase, p. ej. `https://xxxxx.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Tu clave web `sb_publishable_...` |
+| `VITE_SUPABASE_URL` | Project URL de tu proyecto Supabase. |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Publishable key de Supabase (`sb_publishable_...`). |
 
-Usa Production y, si quieres probar despliegues de vista previa, también Preview.
+### En Vercel
 
-> `VITE_` expone estas variables en el navegador mediante el build de Vite. **Solo** usa la URL y la clave *publishable*, nunca `sb_secret_` ni una contraseña de un usuario.
+1. Abre el proyecto en Vercel.
+2. Ve a **Settings → Environment Variables**.
+3. Agrega cada variable con su nombre y valor.
+4. Selecciona **Production** y también **Preview** si usarás despliegues de prueba.
+5. Guarda los cambios y vuelve a desplegar el proyecto (**Redeploy**).
 
-## 4. Vercel: compilar y publicar
+### En tu computadora
 
-El repositorio utiliza **Vite**, no un sitio HTML sin build:
-- Framework Preset: **Vite**.
-- Build Command: `npm run build`.
-- Output Directory: `dist`.
-- Root Directory: raíz del repositorio (`./`).
+Copia `.env.example` a un archivo llamado `.env.local` y reemplaza los valores de ejemplo por tus credenciales reales.
 
-`vercel.json` ya define la configuración básica. Con el repositorio conectado a Vercel, las nuevas confirmaciones (commits) pueden generar un despliegue. Comprueba en **Deployments** que el más reciente está listo y es el de tu repositorio `nexiqu/Proyecto2`; si sigue mostrando el despliegue anterior, pulsa **Redeploy** o revisa la conexión del repositorio.
+```env
+VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_tu_clave
+```
 
-Para desarrollo local, usa Node.js, `npm install`, copia `.env.example` como `.env.local`, coloca tus variables reales y ejecuta `npm run dev`.
+No subas `.env.local` al repositorio. Vite incorpora al código del navegador las variables que empiezan por `VITE_`; por eso solo se debe usar la clave pública **publishable**. Nunca uses una clave `sb_secret_`, una contraseña o una credencial de administración en el frontend.
 
-## 5. Prueba del laboratorio
+## 3. Ejecutar en local
 
-1. Abre el sitio publicado de Vercel en un navegador normal y entra con la **primera cuenta de prueba**.
-2. Abre exactamente la **misma URL de sala** en incógnito o en otro navegador/dispositivo, con la **segunda cuenta**.
-3. Construye una casa en la primera ventana: debe aparecer en la segunda **sin recargar**.
-4. Planta un árbol en la segunda: debe aparecer en la primera.
-5. Lanza un meteorito en la primera: ambos mapas deben mostrar las mismas casillas destruidas.
-6. **Refresca las dos páginas**: la ciudad debe permanecer igual.
-7. Si aparece algún error, comprueba la consola del navegador, las reglas RLS, las variables de Vercel y que ambas cuentas estén creadas en Supabase Authentication.
+Clona el repositorio y entra a la carpeta:
 
-## Etapas siguientes
-- Más edificios y decoraciones.
-- Láser y efectos visuales adicionales.
-- Puntuaciones, objetivos y acceso a salas privadas.
+```bash
+git clone https://github.com/nexiqu/Proyecto2.git
+cd Proyecto2
+```
 
-## Tecnologías
-HTML · CSS · JavaScript · **Vite** · **Supabase Authentication** · **Supabase Database** · **Sincronización automática** · **Vercel**
+Instala las dependencias:
+
+```bash
+npm install
+```
+
+Crea `.env.local` siguiendo la sección anterior y ejecuta el servidor de desarrollo:
+
+```bash
+npm run dev
+```
+
+Vite mostrará una dirección local, normalmente `http://localhost:5173`. Ábrela en el navegador.
+
+Para comprobar que el proyecto compila para producción:
+
+```bash
+npm run build
+```
+
+Para previsualizar el resultado compilado:
+
+```bash
+npm run preview
+```
+
+## 4. Publicar en Vercel
+
+1. En Vercel, selecciona **Add New → Project**.
+2. Importa el repositorio `nexiqu/Proyecto2` desde GitHub.
+3. Comprueba que el framework detectado sea **Vite**.
+4. Configura la carpeta raíz como `./`.
+5. Usa estos valores si Vercel los solicita:
+
+   - **Build Command:** `npm run build`
+   - **Output Directory:** `dist`
+   - **Install Command:** `npm install`
+
+6. Añade las dos variables de entorno de Supabase.
+7. Pulsa **Deploy**.
+
+El archivo `vercel.json` ya contiene la configuración de Vite. Si el repositorio está conectado, los nuevos commits a la rama principal pueden iniciar despliegues automáticos. Comprueba en **Deployments** que el despliegue más reciente termine con estado **Ready**.
+
+## 5. Probar el modo multijugador
+
+1. Abre la aplicación publicada: https://proyecto22-gamma.vercel.app/
+2. Inicia sesión con la primera cuenta de Supabase.
+3. Deja la sala `CIUDAD-01` o crea una sala y copia su enlace.
+4. Abre el mismo enlace en otro navegador, una ventana privada o un segundo dispositivo.
+5. Inicia sesión con la segunda cuenta.
+6. Coloca una casa en la primera ventana. El objeto debe aparecer en la otra después de la siguiente consulta automática.
+7. Coloca un árbol desde la segunda ventana y comprueba que aparezca en la primera.
+8. Prueba **Eliminar** y **Meteorito** para comprobar que la destrucción también se comparte.
+9. Recarga ambas páginas. La ciudad debe conservar las construcciones que no fueron eliminadas.
+
+**Nota sobre la simultaneidad:** la sincronización es automática, pero no es un flujo instantáneo de WebSocket. La otra pantalla suele reflejar el cambio en el siguiente ciclo de consulta (aproximadamente 0,8 segundos, si la pestaña está visible).
+
+## Solución de problemas
+
+| Problema | Qué revisar |
+| --- | --- |
+| La página dice que faltan variables de Supabase. | Verifica que los nombres sean exactamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`, que tengan valores correctos y que se haya hecho un nuevo deploy. |
+| Aparece un error de inicio de sesión. | Comprueba el correo, la contraseña y que el usuario exista y esté confirmado en **Supabase → Authentication → Users**. |
+| El inicio de sesión funciona, pero no se conecta la ciudad. | Revisa que la tabla `public.city_tiles` exista, que las políticas RLS estén activas y que el usuario esté autenticado. |
+| Se puede entrar, pero no guardar o eliminar. | Revisa las políticas de INSERT y DELETE, la estructura de la tabla y los mensajes de error en la consola del navegador. |
+| El segundo navegador no ve los cambios. | Confirma que ambos estén en el mismo código de sala, que las dos sesiones estén activas y que la pestaña esté visible. |
+| Vercel sigue mostrando una versión anterior. | Revisa **Deployments**, confirma que se publicó el último commit y ejecuta **Redeploy** si hace falta. |
+| Funciona localmente, pero no en Vercel. | Compara las variables de entorno de Production con las de tu archivo local y vuelve a desplegar después de cambiarlas. |
+
+Para investigar un error, abre las herramientas de desarrollador del navegador (**F12 → Console**) y revisa el mensaje que aparece al intentar iniciar sesión, construir o destruir.
+
+## Limitaciones conocidas y siguientes pasos
+
+Esta es una primera versión funcional y pequeña, no una plataforma terminada.
+
+- La lista de jugadores muestra al usuario de la sesión actual; todavía no hay un sistema completo de presencia para mostrar en vivo a todos los jugadores conectados.
+- El panel de actividad refleja acciones de la sesión local; no es un historial compartido y persistente de todas las personas.
+- La sincronización usa consultas periódicas cada ~800 ms y se pausa cuando la pestaña está oculta.
+- Las salas usan códigos compartibles, pero no tienen invitaciones, membresías ni privacidad por sala.
+- Las herramientas actuales son casas, edificios, carreteras, árboles, jardines, meteorito y eliminación individual.
+- Un rayo láser, más objetos, efectos y funciones adicionales pueden añadirse en siguientes versiones.
+
+### Ideas para continuar
+
+1. Agregar nuevos edificios, decoraciones y herramientas.
+2. Implementar el rayo láser y sus efectos visuales.
+3. Añadir presencia de jugadores conectados.
+4. Crear un historial compartido de acciones.
+5. Mejorar los permisos para que cada sala tenga miembros autorizados.
+
+## Seguridad
+
+Este proyecto está diseñado como práctica académica y utiliza una configuración de base de datos sencilla:
+
+- Las políticas SQL permiten a **cualquier usuario autenticado** leer, insertar, modificar y eliminar registros de `city_tiles`. No restringen el acceso a la sala a sus participantes.
+- El código de sala sirve para organizar los datos, pero no es una contraseña ni una barrera de seguridad.
+- No guardes información personal, privada o sensible en la ciudad.
+- Para una aplicación pública real habría que añadir membresías de sala, políticas RLS que validen esas membresías, controles de abuso y validación de acciones en el servidor.
+- Nunca compartas contraseñas, claves secretas ni archivos `.env.local`.
+
+---
+
+## Autoría y propósito
+
+City Chaos fue creado como proyecto académico para explorar el desarrollo de una aplicación web compartida, autenticación, persistencia de datos y sincronización entre varios navegadores.
+
+**Hecho para crear, compartir y destruir.** 🏙️
