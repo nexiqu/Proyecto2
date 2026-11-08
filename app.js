@@ -12,6 +12,7 @@ const TOOL_DATA = {
   tree: { name: "Árbol", icon: "🌳", verb: "plantó un árbol" },
   park: { name: "Jardín", icon: "🌷", verb: "creó un jardín" },
   meteor: { name: "Meteorito", icon: "☄️", verb: "lanzó un meteorito" },
+  tornado: { name: "Tornado", icon: "🌪️", verb: "desató un tornado" },
   erase: { name: "Eliminar", icon: "🧹", verb: "eliminó un objeto" }
 };
 const $ = id => document.getElementById(id);
@@ -267,21 +268,29 @@ function selectTool(tool) {
     button.setAttribute("aria-pressed", String(selected));
   });
   $("currentToolLabel").textContent = TOOL_DATA[tool].icon + " Seleccionado: " + TOOL_DATA[tool].name;
-  $("mapSubtitle").textContent = tool === "meteor" ? "Lanza un meteorito en una zona de 3 × 3" :
-    tool === "erase" ? "Toca una casilla para eliminar el objeto" :
-      "Coloca " + TOOL_DATA[tool].name + " sobre una casilla";
+  const instructions = {
+    meteor: "Lanza un meteorito en una zona de 3 × 3",
+    tornado: "Desata un tornado en una zona de hasta 5 × 5",
+    erase: "Toca una casilla para eliminar el objeto"
+  };
+  $("mapSubtitle").textContent = instructions[tool] || "Coloca " + TOOL_DATA[tool].name + " sobre una casilla";
   clearPreview();
 }
 function clearPreview() {
-  for (const tile of grid.children) tile.classList.remove("preview-impact");
+  for (const tile of grid.children) {
+    tile.classList.remove("preview-impact", "preview-tornado");
+  }
 }
 function previewImpact(row,col) {
-  if (state.tool !== "meteor") return;
+  const radius = state.tool === "meteor" ? 1 : state.tool === "tornado" ? 2 : -1;
+  if (radius < 0) return;
   for (const tile of grid.children) {
-    tile.classList.toggle("preview-impact", Math.max(
+    const affected = Math.max(
       Math.abs(Number(tile.dataset.row) - row),
       Math.abs(Number(tile.dataset.col) - col)
-    ) <= 1);
+    ) <= radius;
+    tile.classList.toggle("preview-impact", state.tool === "meteor" && affected);
+    tile.classList.toggle("preview-tornado", state.tool === "tornado" && affected);
   }
 }
 function animateMeteor(row,col) {
@@ -310,6 +319,37 @@ function animateMeteor(row,col) {
     impact.remove();
     targets.forEach(tile => tile.classList.remove("impact"));
   }, 900);
+}
+function animateTornado(row,col) {
+  if (!Number.isInteger(row) || !Number.isInteger(col)) return;
+  const targets = [];
+  for (let dr=-2;dr<=2;dr++) for (let dc=-2;dc<=2;dc++) {
+    const tile = grid.querySelector('[data-row="' + (row+dr) + '"][data-col="' + (col+dc) + '"]');
+    if (!tile) continue;
+    const ring = Math.max(Math.abs(dr),Math.abs(dc));
+    tile.style.setProperty("--tornado-delay", Math.max(0,2-ring)*85 + "ms");
+    tile.classList.remove("tornado-hit");
+    void tile.offsetWidth;
+    tile.classList.add("tornado-hit");
+    targets.push(tile);
+  }
+  const center = grid.querySelector('[data-row="' + row + '"][data-col="' + col + '"]');
+  if (!center) return;
+  const rect = grid.getBoundingClientRect();
+  const centerRect = center.getBoundingClientRect();
+  const vortex = document.createElement("span");
+  vortex.className = "tornado-burst";
+  vortex.textContent = "🌪️";
+  vortex.style.left = centerRect.left - rect.left + centerRect.width/2 + grid.offsetLeft + "px";
+  vortex.style.top = centerRect.top - rect.top + centerRect.height/2 + grid.offsetTop + "px";
+  $("impactFx").append(vortex);
+  setTimeout(() => {
+    vortex.remove();
+    targets.forEach(tile => {
+      tile.classList.remove("tornado-hit");
+      tile.style.removeProperty("--tornado-delay");
+    });
+  }, 1350);
 }
 function updateUrl() {
   const url = new URL(location.href);
@@ -499,14 +539,22 @@ async function handleTile(row, col) {
   const tool = state.tool;
   saveMessage("◌ Guardando cambios…");
   try {
+    clearPreview();
+    // El tornado muestra primero su animación giratoria y después guarda la limpieza.
+    if (tool === "tornado") {
+      animateTornado(row,col);
+      await new Promise(resolve => setTimeout(resolve,850));
+      if (version !== state.roomVersion) return;
+    }
     const params = new URLSearchParams();
-    if (tool === "meteor" || tool === "erase") {
+    if (tool === "meteor" || tool === "tornado" || tool === "erase") {
       params.set("room_id", "eq." + room);
-      if (tool === "meteor") {
-        params.set("row_index", "gte." + Math.max(0, row-1));
-        params.append("row_index", "lte." + Math.min(SIZE-1, row+1));
-        params.set("col_index", "gte." + Math.max(0, col-1));
-        params.append("col_index", "lte." + Math.min(SIZE-1, col+1));
+      if (tool === "meteor" || tool === "tornado") {
+        const radius = tool === "meteor" ? 1 : 2;
+        params.set("row_index", "gte." + Math.max(0,row-radius));
+        params.append("row_index", "lte." + Math.min(SIZE-1,row+radius));
+        params.set("col_index", "gte." + Math.max(0,col-radius));
+        params.append("col_index", "lte." + Math.min(SIZE-1,col+radius));
       } else {
         params.set("row_index", "eq." + row);
         params.set("col_index", "eq." + col);
@@ -527,7 +575,7 @@ async function handleTile(row, col) {
       });
     }
     if (version !== state.roomVersion) return;
-    if (tool === "meteor") animateMeteor(row, col);
+    if (tool === "meteor") animateMeteor(row,col);
     const action = {
       tool, player: state.player, time: Date.now()
     };
@@ -538,6 +586,7 @@ async function handleTile(row, col) {
     if (loaded) {
       saveMessage("✓ Construcción y destrucción guardadas");
       if (tool === "meteor") showToast("☄️ ¡Meteorito! Ciudad actualizada para todos.");
+      if (tool === "tornado") showToast("🌪️ ¡Tornado! Arrasó hasta 25 casillas. Cambios compartidos.");
     }
   } catch (error) {
     console.error("No se pudo guardar la acción:", error);
@@ -693,7 +742,7 @@ function setupEvents() {
   document.addEventListener("keydown", event => {
     if (event.altKey || event.ctrlKey || event.metaKey ||
       ["INPUT","TEXTAREA"].includes(document.activeElement.tagName) || dialog.open) return;
-    const options = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"erase"};
+    const options = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"tornado",8:"erase"};
     if (options[event.key]) selectTool(options[event.key]);
   });
 }
