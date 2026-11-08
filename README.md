@@ -17,6 +17,10 @@ City Chaos es una aplicación web colaborativa en la que varias personas constru
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Requisitos](#requisitos)
 - [Configuración de Supabase](#1-configuración-de-supabase)
+  - [Crear la tabla](#11-crear-la-tabla)
+  - [Registrar autores y jugadores presentes](#12-registrar-autores-y-jugadores-presentes)
+  - [Crear usuarios de prueba](#13-crear-usuarios-de-prueba)
+  - [Obtener las credenciales públicas](#14-obtener-las-credenciales-públicas)
 - [Variables de entorno](#2-variables-de-entorno)
 - [Ejecutar en local](#3-ejecutar-en-local)
 - [Publicar en Vercel](#4-publicar-en-vercel)
@@ -156,7 +160,7 @@ Abre el archivo en GitHub, copia el SQL completo y ejecútalo en **Supabase → 
 
 Ejecuta la migración después de la sección 1.1 y antes de desplegar la versión del código que usa estas columnas y la tabla de presencia.
 
-### 1.2 Crear usuarios de prueba
+### 1.3 Crear usuarios de prueba
 
 1. En Supabase, abre **Authentication → Users**.
 2. Pulsa **Add user → Create new user**.
@@ -166,7 +170,7 @@ Ejecuta la migración después de la sección 1.1 y antes de desplegar la versi�
 
 Usa las dos cuentas para probar la interacción desde dos navegadores o dispositivos diferentes. No publiques las contraseñas.
 
-### 1.3 Obtener las credenciales públicas
+### 1.4 Obtener las credenciales públicas
 
 En el panel de Supabase, abre **Connect** o **Project Settings → API Keys / Data API** y copia:
 
