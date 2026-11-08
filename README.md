@@ -40,6 +40,7 @@ City Chaos es una aplicación web colaborativa en la que varias personas constru
 
 ### Destrucción
 - **Meteorito:** elimina las construcciones dentro de un área de hasta 3 × 3 casillas alrededor del punto seleccionado. Cerca de los bordes del tablero, el área se limita al mapa.
+- **Tornado:** arrasa las construcciones dentro de un área de hasta 5 × 5 casillas. Tiene una vista previa violeta y una animación giratoria; cerca de los bordes, el área se limita al mapa.
 - **Eliminar:** borra el objeto de una sola casilla.
 
 ### Salas y persistencia
@@ -268,7 +269,7 @@ El archivo `vercel.json` ya contiene la configuración de Vite. Si el repositori
 5. Inicia sesión con la segunda cuenta.
 6. Coloca una casa en la primera ventana. El objeto debe aparecer en la otra después de la siguiente consulta automática.
 7. Coloca un árbol desde la segunda ventana y comprueba que aparezca en la primera.
-8. Prueba **Eliminar** y **Meteorito** para comprobar que la destrucción también se comparte.
+8. Prueba **Eliminar**, **Meteorito** y **Tornado** para comprobar que la destrucción también se comparte. El tornado afecta hasta 25 casillas alrededor del punto elegido.
 9. Recarga ambas páginas. La ciudad debe conservar las construcciones que no fueron eliminadas.
 10. Pasa el cursor sobre una casilla ocupada y confirma que se muestre el nombre de quien construyó ese objeto.
 11. Comprueba que el panel **Jugadores** muestre los dos nombres mientras las dos cuentas estén conectadas a la misma sala.
@@ -300,7 +301,7 @@ Esta es una primera versión funcional y pequeña, no una plataforma terminada.
 - El panel de actividad refleja acciones de la sesión local; no es un historial compartido y persistente de todas las personas.
 - La sincronización usa consultas periódicas cada ~800 ms y se pausa cuando la pestaña está oculta.
 - Las salas usan códigos compartibles, pero no tienen invitaciones, membresías ni privacidad por sala.
-- Las herramientas actuales son casas, edificios, carreteras, árboles, jardines, meteorito y eliminación individual.
+- Las herramientas actuales son casas, edificios, carreteras, árboles, jardines, meteorito, tornado y eliminación individual.
 - Un rayo láser, más objetos, efectos y funciones adicionales pueden añadirse en siguientes versiones.
 
 ### Ideas para continuar
