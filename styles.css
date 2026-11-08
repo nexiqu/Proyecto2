@@ -24,3 +24,28 @@
 .auth-card .btn-light{width:100%}
 @media(max-width:1050px){.social-panel{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.social-panel{display:flex}}
+
+/* Attribution for each tile: short visible owner label and full name in tooltip. */
+.tile-owner{
+  position:absolute;
+  z-index:2;
+  right:2px;
+  bottom:2px;
+  max-width:calc(100% - 4px);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  padding:1px 3px;
+  border:1px solid #ffffffa8;
+  border-radius:4px;
+  background:#fffdebdc;
+  color:#385d43;
+  font:800 7px/1.15 "DM Sans",sans-serif;
+  letter-spacing:-.1px;
+  pointer-events:none;
+  box-shadow:0 1px 2px #31533b25;
+}
+.tile-owner[hidden]{display:none}
+.players-card .players-list{gap:12px}
+.players-card .player{padding:2px 0}
+.players-card .player small{color:#85a18e}
