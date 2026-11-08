@@ -45,11 +45,12 @@
           <div class="tool-list" role="group" aria-label="Herramientas de destrucción">
             <button type="button" class="tool meteor-tool" data-tool="meteor" aria-pressed="false"><span class="tool-art art-meteor">☄️</span><span class="tool-copy"><strong>Meteorito</strong><small>Impacto de 3 × 3</small></span><span class="tool-key">6</span></button>
             <button type="button" class="tool tornado-tool" data-tool="tornado" aria-pressed="false"><span class="tool-art art-tornado">🌪️</span><span class="tool-copy"><strong>Tornado</strong><small>Arrasa hasta 5 × 5</small></span><span class="tool-key">7</span></button>
-            <button type="button" class="tool" data-tool="erase" aria-pressed="false"><span class="tool-art art-erase">🧹</span><span class="tool-copy"><strong>Eliminar</strong><small>Borra una casilla</small></span><span class="tool-key">8</span></button>
+            <button type="button" class="tool ray-tool" data-tool="ray" aria-pressed="false"><span class="tool-art art-ray">⚡</span><span class="tool-copy"><strong>Rayo desintegrador</strong><small>Línea de hasta 7 casillas</small></span><span class="tool-key">8</span></button>
+            <button type="button" class="tool" data-tool="erase" aria-pressed="false"><span class="tool-art art-erase">🧹</span><span class="tool-copy"><strong>Eliminar</strong><small>Borra una casilla</small></span><span class="tool-key">9</span></button>
           </div>
         </div>
 
-        <div class="tip-card"><span class="tip-icon">✦</span><div><strong>¿Sabías que…?</strong><p>El meteorito afecta hasta 9 casillas y el tornado hasta 25. ¡Cuidado con tu ciudad!</p></div></div>
+        <div class="tip-card"><span class="tip-icon">✦</span><div><strong>¿Sabías que…?</strong><p>El meteorito afecta hasta 9 casillas, el tornado hasta 25 y el rayo despeja una línea de hasta 7.</p></div></div>
       </aside>
 
       <main class="main-panel">
@@ -129,7 +130,7 @@
   </div>
   <dialog id="helpDialog" class="help-dialog">
     <div class="dialog-heading"><h2>¡Bienvenido a City Chaos! ✨</h2><button type="button" id="closeHelpButton" class="icon-button" aria-label="Cerrar">×</button></div>
-    <p>Selecciona una herramienta a la izquierda y haz clic en una casilla del mapa. Puedes construir, lanzar un meteorito que afecta 3 × 3 casillas o desatar un tornado giratorio que arrasa hasta 5 × 5.</p>
+    <p>Selecciona una herramienta a la izquierda y haz clic en una casilla del mapa. Puedes construir, lanzar un meteorito de 3 × 3, desatar un tornado de hasta 5 × 5 o disparar un rayo horizontal de hasta 7 casillas.</p>
     <p><strong>Multijugador:</strong> inicia sesión con una de las cuentas de Supabase y comparte el enlace de la sala. Ambos verán los cambios inmediatamente y el mapa se guardará en la nube.</p>
     <p><strong>Guardado:</strong> la ciudad está almacenada en Supabase. Puedes cerrar la página o recargarla y volver a entrar a la misma sala sin perder las construcciones.</p>
     <button type="button" id="gotItButton" class="btn btn-dark">¡A construir!</button>
