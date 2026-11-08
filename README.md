@@ -44,6 +44,8 @@ City Chaos es una aplicación web colaborativa en la que varias personas constru
 - El código de sala se incluye en la dirección como parámetro `?sala=...`.
 - Las construcciones se guardan en Supabase y se recuperan al entrar nuevamente a esa sala.
 - Los cambios de otros jugadores se consultan automáticamente cada **800 ms aproximadamente**, mientras la pestaña está visible. No hace falta recargar la página.
+- **Autoría por objeto:** cada construcción guarda el UUID de la cuenta que la colocó (`created_by`, vinculado a `auth.users.id`) y un nombre legible. El nombre aparece abreviado sobre la casilla y completo al pasar el cursor.
+- **Jugadores presentes:** el panel muestra las cuentas activas en la sala. Cada navegador actualiza su presencia cada 10 segundos; se considera presente a quien haya actualizado su registro durante los últimos 35 segundos. La lista se refresca cada 3 segundos.
 
 ### Cuentas
 - El acceso se realiza con correo y contraseña mediante Supabase Authentication.
@@ -57,7 +59,7 @@ City Chaos es una aplicación web colaborativa en la que varias personas constru
 - **Supabase Database (Postgres) y REST API** para leer, guardar y eliminar construcciones.
 - **Vercel** para publicar la aplicación.
 
-La aplicación llama directamente a los endpoints HTTPS de Supabase desde `app.js`. La sesión se conserva en el almacenamiento local del navegador y se renueva cuando es necesario. La sincronización entre navegadores se hace mediante consultas periódicas a la tabla `city_tiles`; **esta versión no utiliza Supabase Realtime ni WebSockets**.
+La aplicación llama directamente a los endpoints HTTPS de Supabase desde `app.js`. La sesión se conserva en el almacenamiento local del navegador y se renueva cuando es necesario. La sincronización del mapa consulta periódicamente `city_tiles`; la lista de personas conectadas consulta `city_presence`. **Esta versión no utiliza Supabase Realtime ni WebSockets**.
 
 ## Estructura del proyecto
 
@@ -70,6 +72,7 @@ La aplicación llama directamente a los endpoints HTTPS de Supabase desde `app.j
 | `vercel.json` | Configuración de compilación y publicación en Vercel. |
 | `.env.example` | Nombres de las variables necesarias, con valores de ejemplo que no son credenciales reales. |
 | `.gitignore` | Archivos locales y secretos que no deben subirse al repositorio. |
+| `supabase/migrations/20261107_city_ownership_and_presence.sql` | Migración para registrar la cuenta autora de cada objeto y los jugadores presentes en cada sala. |
 
 ## Requisitos
 
@@ -130,6 +133,28 @@ create policy "Los jugadores pueden destruir construcciones"
 La clave primaria compuesta `(room_id, row_index, col_index)` permite almacenar como máximo un objeto por casilla y sala. Al construir sobre una casilla ocupada, la aplicación reemplaza el objeto existente.
 
 **Importante:** la aplicación usa consultas REST periódicas. No necesitas agregar `city_tiles` a la publicación `supabase_realtime` para que funcione esta versión.
+
+### 1.2 Registrar autores y jugadores presentes
+
+Después de crear `city_tiles`, ejecuta la migración del repositorio:
+
+`supabase/migrations/20261107_city_ownership_and_presence.sql`
+
+Abre el archivo en GitHub, copia el SQL completo y ejecútalo en **Supabase → SQL Editor → New query → Run**. Esta migración añade:
+
+- `created_by`: UUID vinculado a `auth.users.id`, que identifica la cuenta que colocó el objeto actual.
+- `created_by_name`: nombre legible que se muestra en el tablero. Si alguien reemplaza un objeto, el nuevo objeto queda atribuido a quien lo colocó.
+- `city_presence`: tabla con una fila por cuenta y sala (`room_id`, `user_id`, `display_name`, `last_seen`).
+- Políticas RLS para que cada usuario solo pueda crear, actualizar o borrar su propio registro de presencia. Las construcciones nuevas también deben registrar el ID de la cuenta autenticada.
+
+**Cómo se ve en la aplicación:**
+- Cada casilla ocupada muestra una etiqueta pequeña con las primeras letras del nombre de quien construyó el objeto. Al pasar el cursor sobre la casilla se puede leer el nombre completo.
+- El UUID `created_by` es el vínculo real con la cuenta de Supabase. El campo `created_by_name` es solo una etiqueta legible.
+- Las construcciones que ya existían antes de ejecutar la migración no tienen un autor recuperable; aparecerán como **Autor no registrado**. Las nuevas sí quedarán atribuidas.
+- El panel **Jugadores** muestra quienes están presentes en esa sala. El navegador renueva su presencia cada 10 segundos y la lista se consulta cada 3 segundos.
+- Si alguien cierra la pestaña o pierde conexión inesperadamente, su registro puede seguir visible hasta 35 segundos. Al cerrar sesión o cambiar de sala, la aplicación intenta retirarlo inmediatamente.
+
+Ejecuta la migración después de la sección 1.1 y antes de desplegar la versión del código que usa estas columnas y la tabla de presencia.
 
 ### 1.2 Crear usuarios de prueba
 
@@ -241,6 +266,9 @@ El archivo `vercel.json` ya contiene la configuración de Vite. Si el repositori
 7. Coloca un árbol desde la segunda ventana y comprueba que aparezca en la primera.
 8. Prueba **Eliminar** y **Meteorito** para comprobar que la destrucción también se comparte.
 9. Recarga ambas páginas. La ciudad debe conservar las construcciones que no fueron eliminadas.
+10. Pasa el cursor sobre una casilla ocupada y confirma que se muestre el nombre de quien construyó ese objeto.
+11. Comprueba que el panel **Jugadores** muestre los dos nombres mientras las dos cuentas estén conectadas a la misma sala.
+12. Cierra sesión en una de las ventanas y comprueba que esa cuenta desaparezca de la lista. Si cierras el navegador sin cerrar sesión, espera hasta 35 segundos para que expire su presencia.
 
 **Nota sobre la simultaneidad:** la sincronización es automática, pero no es un flujo instantáneo de WebSocket. La otra pantalla suele reflejar el cambio en el siguiente ciclo de consulta (aproximadamente 0,8 segundos, si la pestaña está visible).
 
@@ -251,6 +279,8 @@ El archivo `vercel.json` ya contiene la configuración de Vite. Si el repositori
 | La página dice que faltan variables de Supabase. | Verifica que los nombres sean exactamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`, que tengan valores correctos y que se haya hecho un nuevo deploy. |
 | Aparece un error de inicio de sesión. | Comprueba el correo, la contraseña y que el usuario exista y esté confirmado en **Supabase → Authentication → Users**. |
 | El inicio de sesión funciona, pero no se conecta la ciudad. | Revisa que la tabla `public.city_tiles` exista, que las políticas RLS estén activas y que el usuario esté autenticado. |
+| No aparece quién construyó un objeto. | Confirma que ejecutaste la migración `20261107_city_ownership_and_presence.sql`. Los objetos colocados antes de esa migración no tienen autor histórico. |
+| El panel Jugadores no muestra a la otra persona. | Comprueba que ambos usen el mismo código de sala y que la migración haya creado `city_presence`. La presencia tarda hasta 3 segundos en actualizarse y caduca tras 35 segundos sin latido. |
 | Se puede entrar, pero no guardar o eliminar. | Revisa las políticas de INSERT y DELETE, la estructura de la tabla y los mensajes de error en la consola del navegador. |
 | El segundo navegador no ve los cambios. | Confirma que ambos estén en el mismo código de sala, que las dos sesiones estén activas y que la pestaña esté visible. |
 | Vercel sigue mostrando una versión anterior. | Revisa **Deployments**, confirma que se publicó el último commit y ejecuta **Redeploy** si hace falta. |
@@ -281,7 +311,8 @@ Esta es una primera versión funcional y pequeña, no una plataforma terminada.
 
 Este proyecto está diseñado como práctica académica y utiliza una configuración de base de datos sencilla:
 
-- Las políticas SQL permiten a **cualquier usuario autenticado** leer, insertar, modificar y eliminar registros de `city_tiles`. No restringen el acceso a la sala a sus participantes.
+- Las políticas SQL permiten a **cualquier usuario autenticado** leer, insertar, modificar y eliminar registros de `city_tiles`; las escrituras nuevas exigen que `created_by` sea el ID de la cuenta autenticada. No restringen el acceso a una sala a sus participantes.
+- En `city_presence`, cada usuario solo puede escribir o borrar su propio registro, pero todos los usuarios autenticados pueden consultar los nombres presentes en la sala.
 - El código de sala sirve para organizar los datos, pero no es una contraseña ni una barrera de seguridad.
 - No guardes información personal, privada o sensible en la ciudad.
 - Para una aplicación pública real habría que añadir membresías de sala, políticas RLS que validen esas membresías, controles de abuso y validación de acciones en el servidor.
