@@ -49,3 +49,13 @@
 .players-card .players-list{gap:12px}
 .players-card .player{padding:2px 0}
 .players-card .player small{color:#85a18e}
+
+
+/* Herramienta Tornado: vista previa y efecto giratorio. */
+.art-tornado{background:#eae2fb}
+.tool.tornado-tool.selected{background:#f1ebff;border-color:#d5c5f1;box-shadow:0 2px 0 #e1d5f6}
+.tile.preview-tornado{background:#e0d4f7!important;box-shadow:inset 0 0 0 2px #9b7ccc;z-index:1}
+.tile.tornado-hit{z-index:5;animation:tornado-tile .82s cubic-bezier(.25,.7,.35,1) var(--tornado-delay,0ms) both;pointer-events:none}
+.tornado-burst{position:absolute;transform:translate(-50%,-50%);font-size:clamp(42px,8vw,82px);filter:drop-shadow(0 5px 12px #8064b8);animation:tornado-swirl 1.15s ease-in-out forwards;pointer-events:none}
+@keyframes tornado-tile{0%{opacity:1;transform:scale(1) rotate(0)}38%{opacity:.95;transform:scale(1.08) rotate(130deg)}100%{opacity:0;transform:scale(.08) rotate(470deg)}}
+@keyframes tornado-swirl{0%{opacity:0;transform:translate(-50%,-50%) rotate(-180deg) scale(.2)}22%{opacity:1;transform:translate(-50%,-50%) rotate(25deg) scale(1.15)}65%{opacity:1;transform:translate(-50%,-50%) rotate(230deg) scale(1.28)}100%{opacity:0;transform:translate(-50%,-50%) rotate(560deg) scale(.72)}}
