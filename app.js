@@ -178,8 +178,8 @@ function renderGrid() {
     tile.querySelector(".tile-art").textContent = type === "road" ? "" : TOOL_DATA[type]?.icon || "";
     const owner = state.owners[tileKey(row,col)];
     const ownerNode = tile.querySelector(".tile-owner");
-    ownerNode.textContent = owner?.name ? owner.name.slice(0,3) : (owner?.id ? "?" : "");
-    ownerNode.hidden = type === "empty" || !owner;
+    ownerNode.textContent = owner?.id && owner.name ? owner.name.slice(0,3) : "";
+    ownerNode.hidden = type === "empty" || !owner?.id;
     tile.title = type === "empty" ? "Casilla vacía" :
       (TOOL_DATA[type]?.name || "Objeto") + " · " +
       (owner?.name ? "Construido por " + owner.name : owner?.id ? "Construido por una cuenta" : "Autor no registrado");
