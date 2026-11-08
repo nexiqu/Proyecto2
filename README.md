@@ -42,6 +42,7 @@ City Chaos es una aplicación web colaborativa en la que varias personas constru
 - **Meteorito:** elimina las construcciones dentro de un área de hasta 3 × 3 casillas alrededor del punto seleccionado. Cerca de los bordes del tablero, el área se limita al mapa.
 - **Tornado:** arrasa las construcciones dentro de un área de hasta 5 × 5 casillas. Tiene una vista previa violeta y una animación giratoria; cerca de los bordes, el área se limita al mapa.
 - **Rayo desintegrador:** despeja una línea horizontal de hasta 7 casillas centrada en el punto seleccionado. La franja se previsualiza en celeste y recibe una animación luminosa antes de eliminarse.
+- **Bomba nuclear:** reinicia por completo el mapa de la sala actual. Muestra una vista previa de todo el tablero, reproduce un efecto arcade y solicita confirmación porque no se puede deshacer. No afecta a otras salas.
 - **Eliminar:** borra el objeto de una sola casilla.
 
 ### Salas y persistencia
@@ -271,6 +272,7 @@ El archivo `vercel.json` ya contiene la configuración de Vite. Si el repositori
 6. Coloca una casa en la primera ventana. El objeto debe aparecer en la otra después de la siguiente consulta automática.
 7. Coloca un árbol desde la segunda ventana y comprueba que aparezca en la primera.
 8. Prueba **Eliminar**, **Meteorito**, **Tornado** y **Rayo desintegrador** para comprobar que la destrucción también se comparte. El tornado afecta hasta 25 casillas y el rayo despeja una línea de hasta 7.
+9. Para probar **Bomba nuclear**, usa una sala de prueba: al hacer clic, confirma el aviso y se borrarán todas las construcciones de esa sala, pero no las de otras salas.
 9. Recarga ambas páginas. La ciudad debe conservar las construcciones que no fueron eliminadas.
 10. Pasa el cursor sobre una casilla ocupada y confirma que se muestre el nombre de quien construyó ese objeto.
 11. Comprueba que el panel **Jugadores** muestre los dos nombres mientras las dos cuentas estén conectadas a la misma sala.
@@ -302,7 +304,7 @@ Esta es una primera versión funcional y pequeña, no una plataforma terminada.
 - El panel de actividad refleja acciones de la sesión local; no es un historial compartido y persistente de todas las personas.
 - La sincronización usa consultas periódicas cada ~800 ms y se pausa cuando la pestaña está oculta.
 - Las salas usan códigos compartibles, pero no tienen invitaciones, membresías ni privacidad por sala.
-- Las herramientas actuales son casas, edificios, carreteras, árboles, jardines, meteorito, tornado, rayo desintegrador y eliminación individual.
+- Las herramientas actuales son casas, edificios, carreteras, árboles, jardines, meteorito, tornado, rayo desintegrador, bomba nuclear y eliminación individual.
 - Más objetos, efectos y funciones adicionales pueden añadirse en siguientes versiones.
 
 ### Ideas para continuar
