@@ -13,6 +13,7 @@ const TOOL_DATA = {
   park: { name: "Jardín", icon: "🌷", verb: "creó un jardín" },
   meteor: { name: "Meteorito", icon: "☄️", verb: "lanzó un meteorito" },
   tornado: { name: "Tornado", icon: "🌪️", verb: "desató un tornado" },
+  ray: { name: "Rayo desintegrador", icon: "⚡", verb: "disparó un rayo desintegrador" },
   erase: { name: "Eliminar", icon: "🧹", verb: "eliminó un objeto" }
 };
 const $ = id => document.getElementById(id);
@@ -271,6 +272,7 @@ function selectTool(tool) {
   const instructions = {
     meteor: "Lanza un meteorito en una zona de 3 × 3",
     tornado: "Desata un tornado en una zona de hasta 5 × 5",
+    ray: "Dispara una línea horizontal de hasta 7 casillas",
     erase: "Toca una casilla para eliminar el objeto"
   };
   $("mapSubtitle").textContent = instructions[tool] || "Coloca " + TOOL_DATA[tool].name + " sobre una casilla";
@@ -278,19 +280,24 @@ function selectTool(tool) {
 }
 function clearPreview() {
   for (const tile of grid.children) {
-    tile.classList.remove("preview-impact", "preview-tornado");
+    tile.classList.remove("preview-impact", "preview-tornado", "preview-ray");
   }
 }
 function previewImpact(row,col) {
   const radius = state.tool === "meteor" ? 1 : state.tool === "tornado" ? 2 : -1;
-  if (radius < 0) return;
+  const rayStart = Math.max(0,col-3);
+  const rayEnd = Math.min(SIZE-1,col+3);
   for (const tile of grid.children) {
-    const affected = Math.max(
-      Math.abs(Number(tile.dataset.row) - row),
-      Math.abs(Number(tile.dataset.col) - col)
+    const tileRow = Number(tile.dataset.row);
+    const tileCol = Number(tile.dataset.col);
+    const affected = radius >= 0 && Math.max(
+      Math.abs(tileRow-row),
+      Math.abs(tileCol-col)
     ) <= radius;
     tile.classList.toggle("preview-impact", state.tool === "meteor" && affected);
     tile.classList.toggle("preview-tornado", state.tool === "tornado" && affected);
+    tile.classList.toggle("preview-ray",
+      state.tool === "ray" && tileRow === row && tileCol >= rayStart && tileCol <= rayEnd);
   }
 }
 function animateMeteor(row,col) {
@@ -350,6 +357,41 @@ function animateTornado(row,col) {
       tile.style.removeProperty("--tornado-delay");
     });
   }, 1350);
+}
+function animateRay(row,col) {
+  if (!Number.isInteger(row) || !Number.isInteger(col)) return;
+  const startCol = Math.max(0,col-3);
+  const endCol = Math.min(SIZE-1,col+3);
+  const targets = [];
+  for (let currentCol=startCol;currentCol<=endCol;currentCol++) {
+    const tile = grid.querySelector('[data-row="' + row + '"][data-col="' + currentCol + '"]');
+    if (!tile) continue;
+    tile.style.setProperty("--ray-delay", (currentCol-startCol)*55 + "ms");
+    tile.classList.remove("ray-hit");
+    void tile.offsetWidth;
+    tile.classList.add("ray-hit");
+    targets.push(tile);
+  }
+  const first = grid.querySelector('[data-row="' + row + '"][data-col="' + startCol + '"]');
+  const last = grid.querySelector('[data-row="' + row + '"][data-col="' + endCol + '"]');
+  if (!first || !last) return;
+  const scene = grid.parentElement;
+  const sceneRect = scene.getBoundingClientRect();
+  const firstRect = first.getBoundingClientRect();
+  const lastRect = last.getBoundingClientRect();
+  const beam = document.createElement("span");
+  beam.className = "ray-beam";
+  beam.style.left = firstRect.left - sceneRect.left + "px";
+  beam.style.top = firstRect.top - sceneRect.top + firstRect.height/2 + "px";
+  beam.style.width = lastRect.right - firstRect.left + "px";
+  $("impactFx").append(beam);
+  setTimeout(() => {
+    beam.remove();
+    targets.forEach(tile => {
+      tile.classList.remove("ray-hit");
+      tile.style.removeProperty("--ray-delay");
+    });
+  }, 1050);
 }
 function updateUrl() {
   const url = new URL(location.href);
@@ -540,14 +582,19 @@ async function handleTile(row, col) {
   saveMessage("◌ Guardando cambios…");
   try {
     clearPreview();
-    // El tornado muestra primero su animación giratoria y después guarda la limpieza.
+    // El tornado y el rayo muestran su animación antes de guardar la limpieza.
     if (tool === "tornado") {
       animateTornado(row,col);
       await new Promise(resolve => setTimeout(resolve,850));
       if (version !== state.roomVersion) return;
     }
+    if (tool === "ray") {
+      animateRay(row,col);
+      await new Promise(resolve => setTimeout(resolve,700));
+      if (version !== state.roomVersion) return;
+    }
     const params = new URLSearchParams();
-    if (tool === "meteor" || tool === "tornado" || tool === "erase") {
+    if (tool === "meteor" || tool === "tornado" || tool === "ray" || tool === "erase") {
       params.set("room_id", "eq." + room);
       if (tool === "meteor" || tool === "tornado") {
         const radius = tool === "meteor" ? 1 : 2;
@@ -555,6 +602,10 @@ async function handleTile(row, col) {
         params.append("row_index", "lte." + Math.min(SIZE-1,row+radius));
         params.set("col_index", "gte." + Math.max(0,col-radius));
         params.append("col_index", "lte." + Math.min(SIZE-1,col+radius));
+      } else if (tool === "ray") {
+        params.set("row_index", "eq." + row);
+        params.set("col_index", "gte." + Math.max(0,col-3));
+        params.append("col_index", "lte." + Math.min(SIZE-1,col+3));
       } else {
         params.set("row_index", "eq." + row);
         params.set("col_index", "eq." + col);
@@ -587,6 +638,7 @@ async function handleTile(row, col) {
       saveMessage("✓ Construcción y destrucción guardadas");
       if (tool === "meteor") showToast("☄️ ¡Meteorito! Ciudad actualizada para todos.");
       if (tool === "tornado") showToast("🌪️ ¡Tornado! Arrasó hasta 25 casillas. Cambios compartidos.");
+      if (tool === "ray") showToast("⚡ ¡Rayo desintegrador! Despejó una línea de hasta 7 casillas.");
     }
   } catch (error) {
     console.error("No se pudo guardar la acción:", error);
@@ -742,7 +794,7 @@ function setupEvents() {
   document.addEventListener("keydown", event => {
     if (event.altKey || event.ctrlKey || event.metaKey ||
       ["INPUT","TEXTAREA"].includes(document.activeElement.tagName) || dialog.open) return;
-    const options = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"tornado",8:"erase"};
+    const options = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"tornado",8:"ray",9:"erase"};
     if (options[event.key]) selectTool(options[event.key]);
   });
 }
