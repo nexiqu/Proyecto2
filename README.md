@@ -44,6 +44,7 @@ City Chaos es una aplicación web colaborativa en la que varias personas constru
 - **Rayo desintegrador:** despeja una línea horizontal de hasta 7 casillas centrada en el punto seleccionado. La franja se previsualiza en celeste y recibe una animación luminosa antes de eliminarse.
 - **Bomba nuclear:** reinicia por completo el mapa de la sala actual. Muestra una vista previa de todo el tablero, reproduce un efecto arcade y solicita confirmación porque no se puede deshacer. No afecta a otras salas.
 - **Eliminar:** borra el objeto de una sola casilla.
+- **Atajos de destrucción:** 6 Meteorito, 7 Tornado, 8 Rayo desintegrador, 9 Bomba nuclear y 0 Eliminar.
 
 ### Salas y persistencia
 - Cada sala tiene un código, por ejemplo `CIUDAD-01`.
@@ -272,11 +273,11 @@ El archivo `vercel.json` ya contiene la configuración de Vite. Si el repositori
 6. Coloca una casa en la primera ventana. El objeto debe aparecer en la otra después de la siguiente consulta automática.
 7. Coloca un árbol desde la segunda ventana y comprueba que aparezca en la primera.
 8. Prueba **Eliminar**, **Meteorito**, **Tornado** y **Rayo desintegrador** para comprobar que la destrucción también se comparte. El tornado afecta hasta 25 casillas y el rayo despeja una línea de hasta 7.
-9. Para probar **Bomba nuclear**, usa una sala de prueba: al hacer clic, confirma el aviso y se borrarán todas las construcciones de esa sala, pero no las de otras salas.
 9. Recarga ambas páginas. La ciudad debe conservar las construcciones que no fueron eliminadas.
 10. Pasa el cursor sobre una casilla ocupada y confirma que se muestre el nombre de quien construyó ese objeto.
 11. Comprueba que el panel **Jugadores** muestre los dos nombres mientras las dos cuentas estén conectadas a la misma sala.
 12. Cierra sesión en una de las ventanas y comprueba que esa cuenta desaparezca de la lista. Si cierras el navegador sin cerrar sesión, espera hasta 35 segundos para que expire su presencia.
+13. Para probar **Bomba nuclear**, crea una sala de prueba, construye algunos objetos y actívala. Confirma el aviso: se borrará todo el mapa de esa sala de manera irreversible, pero no se modificarán otras salas.
 
 **Nota sobre la simultaneidad:** la sincronización es automática, pero no es un flujo instantáneo de WebSocket. La otra pantalla suele reflejar el cambio en el siguiente ciclo de consulta (aproximadamente 0,8 segundos, si la pestaña está visible).
 
