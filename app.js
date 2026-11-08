@@ -14,6 +14,7 @@ const TOOL_DATA = {
   meteor: { name: "Meteorito", icon: "☄️", verb: "lanzó un meteorito" },
   tornado: { name: "Tornado", icon: "🌪️", verb: "desató un tornado" },
   ray: { name: "Rayo desintegrador", icon: "⚡", verb: "disparó un rayo desintegrador" },
+  nuke: { name: "Bomba nuclear", icon: "☢️", verb: "activó la bomba nuclear" },
   erase: { name: "Eliminar", icon: "🧹", verb: "eliminó un objeto" }
 };
 const $ = id => document.getElementById(id);
@@ -273,6 +274,7 @@ function selectTool(tool) {
     meteor: "Lanza un meteorito en una zona de 3 × 3",
     tornado: "Desata un tornado en una zona de hasta 5 × 5",
     ray: "Dispara una línea horizontal de hasta 7 casillas",
+    nuke: "Elimina todas las construcciones de esta sala",
     erase: "Toca una casilla para eliminar el objeto"
   };
   $("mapSubtitle").textContent = instructions[tool] || "Coloca " + TOOL_DATA[tool].name + " sobre una casilla";
@@ -280,7 +282,7 @@ function selectTool(tool) {
 }
 function clearPreview() {
   for (const tile of grid.children) {
-    tile.classList.remove("preview-impact", "preview-tornado", "preview-ray");
+    tile.classList.remove("preview-impact", "preview-tornado", "preview-ray", "preview-nuke");
   }
 }
 function previewImpact(row,col) {
@@ -298,6 +300,7 @@ function previewImpact(row,col) {
     tile.classList.toggle("preview-tornado", state.tool === "tornado" && affected);
     tile.classList.toggle("preview-ray",
       state.tool === "ray" && tileRow === row && tileCol >= rayStart && tileCol <= rayEnd);
+    tile.classList.toggle("preview-nuke", state.tool === "nuke");
   }
 }
 function animateMeteor(row,col) {
@@ -392,6 +395,22 @@ function animateRay(row,col) {
       tile.style.removeProperty("--ray-delay");
     });
   }, 1050);
+}
+function animateNuke() {
+  const targets = [...grid.children];
+  targets.forEach(tile => {
+    tile.classList.remove("nuke-hit");
+    void tile.offsetWidth;
+    tile.classList.add("nuke-hit");
+  });
+  const flash = document.createElement("span");
+  flash.className = "nuke-flash";
+  flash.textContent = "☢️";
+  $("impactFx").append(flash);
+  setTimeout(() => {
+    flash.remove();
+    targets.forEach(tile => tile.classList.remove("nuke-hit"));
+  }, 1450);
 }
 function updateUrl() {
   const url = new URL(location.href);
@@ -575,14 +594,21 @@ async function handleTile(row, col) {
   if (!state.user) return showToast("Inicia sesión para construir y destruir.");
   if (state.mode !== "online") return showToast("Aún no se pudo conectar la ciudad. Revisa el mensaje a la derecha.");
   if (state.busy) return;
+  const tool = state.tool;
+  if (tool === "nuke" && !window.confirm(
+    "¿Activar la Bomba nuclear?\n\nSe eliminarán TODAS las construcciones de la sala " +
+    state.room + ". Esta acción no se puede deshacer."
+  )) {
+    clearPreview();
+    return;
+  }
   state.busy = true;
   const version = state.roomVersion;
   const room = state.room;
-  const tool = state.tool;
   saveMessage("◌ Guardando cambios…");
   try {
     clearPreview();
-    // El tornado y el rayo muestran su animación antes de guardar la limpieza.
+    // El tornado, el rayo y la bomba muestran su animación antes de guardar la limpieza.
     if (tool === "tornado") {
       animateTornado(row,col);
       await new Promise(resolve => setTimeout(resolve,850));
@@ -593,8 +619,17 @@ async function handleTile(row, col) {
       await new Promise(resolve => setTimeout(resolve,700));
       if (version !== state.roomVersion) return;
     }
+    if (tool === "nuke") {
+      animateNuke();
+      await new Promise(resolve => setTimeout(resolve,900));
+      if (version !== state.roomVersion) return;
+    }
     const params = new URLSearchParams();
-    if (tool === "meteor" || tool === "tornado" || tool === "ray" || tool === "erase") {
+    if (tool === "nuke") {
+      // Sin filtros de fila o columna: elimina solo todas las casillas de la sala actual.
+      params.set("room_id", "eq." + room);
+      await request("/rest/v1/city_tiles?" + params, { method: "DELETE" });
+    } else if (tool === "meteor" || tool === "tornado" || tool === "ray" || tool === "erase") {
       params.set("room_id", "eq." + room);
       if (tool === "meteor" || tool === "tornado") {
         const radius = tool === "meteor" ? 1 : 2;
@@ -639,6 +674,7 @@ async function handleTile(row, col) {
       if (tool === "meteor") showToast("☄️ ¡Meteorito! Ciudad actualizada para todos.");
       if (tool === "tornado") showToast("🌪️ ¡Tornado! Arrasó hasta 25 casillas. Cambios compartidos.");
       if (tool === "ray") showToast("⚡ ¡Rayo desintegrador! Despejó una línea de hasta 7 casillas.");
+      if (tool === "nuke") showToast("☢️ ¡Mapa reiniciado! La sala quedó completamente vacía.");
     }
   } catch (error) {
     console.error("No se pudo guardar la acción:", error);
@@ -794,7 +830,7 @@ function setupEvents() {
   document.addEventListener("keydown", event => {
     if (event.altKey || event.ctrlKey || event.metaKey ||
       ["INPUT","TEXTAREA"].includes(document.activeElement.tagName) || dialog.open) return;
-    const options = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"tornado",8:"ray",9:"erase"};
+    const options = {1:"house",2:"building",3:"road",4:"tree",5:"park",6:"meteor",7:"tornado",8:"ray",9:"nuke",0:"erase"};
     if (options[event.key]) selectTool(options[event.key]);
   });
 }
