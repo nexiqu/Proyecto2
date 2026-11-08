@@ -18,8 +18,10 @@ const $ = id => document.getElementById(id);
 const state = {
   room: cleanRoom(new URLSearchParams(location.search).get("sala") || "CIUDAD-01"),
   user: null, session: null, player: "Jugador", mode: "offline", tool: "house",
-  cells: {}, activity: [], roomVersion: 0, loadVersion: 0,
-  pollTimer: null, toastTimer: null, busy: false, refreshPromise: null
+  cells: {}, owners: {}, activity: [], roomPlayers: [],
+  roomVersion: 0, loadVersion: 0,
+  pollTimer: null, playersTimer: null, heartbeatTimer: null,
+  toastTimer: null, busy: false, refreshPromise: null
 };
 const grid = $("cityGrid");
 const roomInput = $("roomInput");
@@ -157,7 +159,11 @@ function initGrid() {
       const art = document.createElement("span");
       art.className = "tile-art";
       art.setAttribute("aria-hidden", "true");
-      tile.append(art);
+      const owner = document.createElement("span");
+      owner.className = "tile-owner";
+      owner.setAttribute("aria-hidden", "true");
+      owner.hidden = true;
+      tile.append(art, owner);
       fragment.append(tile);
     }
   }
@@ -170,6 +176,13 @@ function renderGrid() {
     const type = cells[tileKey(row, col)] || "empty";
     tile.dataset.type = type;
     tile.querySelector(".tile-art").textContent = type === "road" ? "" : TOOL_DATA[type]?.icon || "";
+    const owner = state.owners[tileKey(row,col)];
+    const ownerNode = tile.querySelector(".tile-owner");
+    ownerNode.textContent = owner?.name ? owner.name.slice(0,3) : (owner?.id ? "?" : "");
+    ownerNode.hidden = type === "empty" || !owner;
+    tile.title = type === "empty" ? "Casilla vacía" :
+      (TOOL_DATA[type]?.name || "Objeto") + " · " +
+      (owner?.name ? "Construido por " + owner.name : owner?.id ? "Construido por una cuenta" : "Autor no registrado");
     const horizontal = cells[tileKey(row, col-1)] === "road" || cells[tileKey(row,col+1)] === "road";
     const vertical = cells[tileKey(row-1,col)] === "road" || cells[tileKey(row+1,col)] === "road";
     tile.classList.toggle("road-horizontal", Boolean(horizontal && !vertical));
@@ -185,21 +198,36 @@ function renderGrid() {
 function renderPlayers() {
   const host = $("playersList");
   host.replaceChildren();
-  $("playerCount").textContent = state.user ? "1" : "0";
-  if (!state.user) return;
-  const row = document.createElement("div");
-  row.className = "player";
-  const avatar = document.createElement("span");
-  avatar.className = "player-avatar avatar-a";
-  avatar.textContent = "☺";
-  const info = document.createElement("span");
-  const name = document.createElement("strong");
-  name.textContent = state.player + " (tú)";
-  const subtitle = document.createElement("small");
-  subtitle.textContent = "Los cambios de otros jugadores aparecen en el mapa";
-  info.append(name, subtitle);
-  row.append(avatar, info);
-  host.append(row);
+  const players = [...state.roomPlayers];
+  if (state.user && !players.some(player => player.user_id === state.user.id)) {
+    players.unshift({ user_id: state.user.id, display_name: state.player });
+  }
+  $("playerCount").textContent = String(players.length);
+  if (!players.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-activity";
+    empty.textContent = "Todavía no hay jugadores conectados a esta sala.";
+    host.append(empty);
+    return;
+  }
+  players.forEach((person,index) => {
+    const row = document.createElement("div");
+    row.className = "player";
+    const avatar = document.createElement("span");
+    avatar.className = "player-avatar avatar-" + ["a","b","c"][index%3];
+    avatar.textContent = ["☺","✿","✦"][index%3];
+    const info = document.createElement("span");
+    const name = document.createElement("strong");
+    name.textContent = cleanName(person.display_name) + (person.user_id === state.user?.id ? " (tú)" : "");
+    const subtitle = document.createElement("small");
+    subtitle.textContent = "En esta ciudad ahora";
+    info.append(name,subtitle);
+    const dot = document.createElement("span");
+    dot.className = "player-status";
+    dot.textContent = "●";
+    row.append(avatar,info,dot);
+    host.append(row);
+  });
 }
 function renderActivity() {
   const host = $("activityList");
@@ -295,34 +323,60 @@ function copyLink() {
     .then(() => showToast("Enlace de la sala copiado."))
     .catch(() => window.prompt("Copia este enlace:", url.href));
 }
-function stopPolling() {
+async function stopPolling() {
+  const previousRoom = state.room;
+  const previousUser = state.user?.id;
   if (state.pollTimer) clearInterval(state.pollTimer);
+  if (state.playersTimer) clearInterval(state.playersTimer);
+  if (state.heartbeatTimer) clearInterval(state.heartbeatTimer);
   state.pollTimer = null;
+  state.playersTimer = null;
+  state.heartbeatTimer = null;
   state.roomVersion += 1;
   state.loadVersion += 1;
+  if (previousUser && state.session) {
+    const params = new URLSearchParams({
+      room_id: "eq." + previousRoom,
+      user_id: "eq." + previousUser
+    });
+    try {
+      await request("/rest/v1/city_presence?" + params,{method:"DELETE"});
+    } catch (error) {
+      console.warn("No se pudo retirar la presencia; caducará automáticamente:",error);
+    }
+  }
+  state.roomPlayers = [];
+  renderPlayers();
 }
 async function loadWorld(room = state.room, version = state.roomVersion) {
   if (!state.user || room !== state.room || version !== state.roomVersion) return false;
   const requestId = ++state.loadVersion;
   const params = new URLSearchParams({
     room_id: "eq." + room,
-    select: "row_index,col_index,object_type",
+    select: "row_index,col_index,object_type,created_by,created_by_name",
     limit: "200"
   });
   try {
     const rows = await request("/rest/v1/city_tiles?" + params);
     if (version !== state.roomVersion || requestId !== state.loadVersion) return false;
     const next = {};
+    const owners = {};
     for (const item of rows || []) {
       if (Number.isInteger(item.row_index) && item.row_index >= 0 && item.row_index < SIZE &&
         Number.isInteger(item.col_index) && item.col_index >= 0 && item.col_index < SIZE &&
         ["house","building","road","tree","park"].includes(item.object_type)) {
-        next[tileKey(item.row_index,item.col_index)] = item.object_type;
+        const key = tileKey(item.row_index,item.col_index);
+        next[key] = item.object_type;
+        owners[key] = {
+          id: item.created_by || null,
+          name: item.created_by_name || (item.created_by ? "Jugador" : "Autor no registrado")
+        };
       }
     }
     state.cells = next;
+    state.owners = owners;
     renderGrid();
-    saveMessage("✓ Ciudad guardada en Supabase");
+    saveMessage("✓ Ciudad y autores guardados en Supabase");
     return true;
   } catch (error) {
     if (version !== state.roomVersion) return false;
@@ -338,14 +392,57 @@ async function loadWorld(room = state.room, version = state.roomVersion) {
     return false;
   }
 }
+
+async function updatePresence(room = state.room, version = state.roomVersion) {
+  if (!state.user || !state.session || room !== state.room || version !== state.roomVersion) return false;
+  const params = new URLSearchParams({ on_conflict: "room_id,user_id" });
+  await request("/rest/v1/city_presence?" + params, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: {
+      room_id: room,
+      user_id: state.user.id,
+      display_name: state.player,
+      last_seen: new Date().toISOString()
+    }
+  });
+  return true;
+}
+
+async function loadPlayers(room = state.room, version = state.roomVersion) {
+  if (!state.user || room !== state.room || version !== state.roomVersion) return false;
+  const cutoff = new Date(Date.now() - 35000).toISOString();
+  const params = new URLSearchParams({
+    room_id: "eq." + room,
+    last_seen: "gte." + cutoff,
+    select: "user_id,display_name,last_seen",
+    order: "last_seen.desc",
+    limit: "30"
+  });
+  try {
+    const players = await request("/rest/v1/city_presence?" + params);
+    if (version !== state.roomVersion || room !== state.room) return false;
+    state.roomPlayers = (players || []).map(player => ({
+      user_id: player.user_id,
+      display_name: player.display_name || "Jugador"
+    }));
+    renderPlayers();
+    return true;
+  } catch (error) {
+    console.warn("No se pudo consultar la presencia de la sala:",error);
+    return false;
+  }
+}
 async function joinRoom(value) {
-  stopPolling();
+  await stopPolling();
   const version = state.roomVersion;
   state.room = cleanRoom(value);
   roomInput.value = state.room;
   updateUrl();
   state.cells = {};
+  state.owners = {};
   state.activity = [];
+  state.roomPlayers = [];
   renderGrid();
   renderActivity();
   renderPlayers();
@@ -362,8 +459,29 @@ async function joinRoom(value) {
   if (!ok || version !== state.roomVersion) return;
   state.mode = "online";
   status("online", "Ciudad conectada");
-  cloudHint("Ciudad en línea. Los cambios se guardan en Supabase y aparecen sin refrescar en otros dispositivos.",true);
-  // Sincronización frecuente entre dispositivos sin depender de un WebSocket.
+  cloudHint("Ciudad en línea. Los cambios se guardan con el autor y se comparten entre los jugadores de la sala.",true);
+  // Registrar el jugador actual y consultar quién más está en esta sala.
+  try {
+    await updatePresence(state.room,version);
+    await loadPlayers(state.room,version);
+  } catch (error) {
+    console.warn("No se pudo registrar la presencia del jugador:",error);
+    cloudHint("La ciudad está guardada. No se pudo actualizar la lista de jugadores: " + errorMessage(error),false);
+  }
+  state.heartbeatTimer = setInterval(() => {
+    if (version === state.roomVersion && state.user) {
+      void updatePresence(state.room,version).catch(error =>
+        console.warn("No se pudo renovar la presencia:",error)
+      );
+    }
+  },10000);
+  state.playersTimer = setInterval(() => {
+    if (version === state.roomVersion && state.user &&
+        document.visibilityState !== "hidden") {
+      void loadPlayers(state.room,version);
+    }
+  },3000);
+  // Sincronización frecuente de las construcciones entre dispositivos.
   state.pollTimer = setInterval(() => {
     if (version === state.roomVersion && state.user && !state.busy &&
         document.visibilityState !== "hidden") {
@@ -401,7 +519,10 @@ async function handleTile(row, col) {
         headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
         body: {
           room_id: room, row_index: row, col_index: col,
-          object_type: tool, updated_at: new Date().toISOString()
+          object_type: tool,
+          created_by: state.user.id,
+          created_by_name: state.player,
+          updated_at: new Date().toISOString()
         }
       });
     }
@@ -464,12 +585,14 @@ async function signIn(event) {
 }
 async function signOut() {
   const token = state.session?.access_token;
-  stopPolling();
+  await stopPolling();
   saveSession(null);
   state.user = null;
   state.player = "Jugador";
   state.mode = "offline";
   state.cells = {};
+  state.owners = {};
+  state.roomPlayers = [];
   state.activity = [];
   renderGrid();
   renderActivity();
@@ -488,6 +611,10 @@ function savePlayerName() {
   state.player = cleanName(nameInput.value);
   nameInput.value = state.player;
   if (state.user) localStorage.setItem("citychaos_name_" + state.user.id, state.player);
+  if (state.mode === "online") {
+    void updatePresence().then(() => loadPlayers())
+      .catch(error => console.warn("No se pudo actualizar el nombre en la sala:",error));
+  }
   renderPlayers();
   showToast("Nombre guardado: " + state.player);
 }
