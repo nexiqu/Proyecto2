@@ -69,3 +69,13 @@
 .ray-beam{position:absolute;z-index:8;height:8px;border-radius:999px;transform:translateY(-50%) scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#a8f8ff 0%,#fff 35%,#56eaff 65%,#c6fdff 100%);box-shadow:0 0 5px 2px #4ce7ff,0 0 14px 5px #1bbbdc,0 0 28px 9px #86ecff;pointer-events:none;animation:ray-shoot .58s cubic-bezier(.12,.72,.22,1) forwards}
 @keyframes ray-shoot{0%{opacity:.1;transform:translateY(-50%) scaleX(0)}25%{opacity:1}65%{opacity:1;transform:translateY(-50%) scaleX(1)}100%{opacity:.72;transform:translateY(-50%) scaleX(1)}}
 @keyframes ray-disintegrate{0%{filter:brightness(1);opacity:1;transform:scaleX(1) scaleY(1)}35%{filter:brightness(2.4);opacity:1;transform:scaleX(.92) scaleY(.65)}100%{filter:brightness(2);opacity:0;transform:scaleX(.04) scaleY(.12)}}
+
+
+/* Bomba nuclear: reinicio total con confirmación y efecto arcade estilizado. */
+.art-nuke{background:#ffe0d9}
+.tool.nuke-tool.selected{background:#fff0ed;border-color:#efb0a5;box-shadow:0 2px 0 #f5d1ca}
+.tile.preview-nuke{background:#f2bdb5!important;box-shadow:inset 0 0 0 2px #ce6258;z-index:1}
+.tile.nuke-hit{z-index:7;animation:nuke-tile-clear .78s ease-out both;pointer-events:none}
+.nuke-flash{position:absolute;z-index:10;inset:0;display:grid;place-items:center;border-radius:9px;font-size:clamp(72px,17vw,150px);background:radial-gradient(circle at center,#fffbdc 0%,#ffd27cbb 24%,#f18a6c99 55%,#f18a6c00 78%);filter:drop-shadow(0 3px 22px #faaf53);animation:nuke-flash-effect 1.35s ease-out forwards;pointer-events:none}
+@keyframes nuke-tile-clear{0%{opacity:1;filter:brightness(1);transform:scale(1)}35%{opacity:1;filter:brightness(2.5);transform:scale(1.08)}100%{opacity:0;filter:brightness(2);transform:scale(.12)}}
+@keyframes nuke-flash-effect{0%{opacity:0;transform:scale(.22)}18%{opacity:1;transform:scale(1.08)}52%{opacity:.95;transform:scale(1)}100%{opacity:0;transform:scale(1.16)}}
